@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>WW Sales Admin</title>
+<link rel="icon" href="ww-mark-cream.png">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -162,16 +164,17 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="login-logo">Wonder<span>woods</span></div>
-  <div class="login-sub">Sales Admin · Who are you?</div>
-  <div class="login-title">Select your profile</div>
-  <div class="user-cards" id="user-cards"></div>
+  <div class="login-logo"><img src="ww-logo-cream.png" alt="Wonderwoods" style="height:30px;display:block;margin:0 auto"></div>
+  <div class="login-sub">Sales Admin</div>
+  <div class="login-title">Sign in with your company Google account</div>
+  <div id="g-signin" style="min-height:44px;display:flex;justify-content:center"></div>
+  <div id="login-msg" style="margin-top:14px;font-size:.75rem;color:#e07a6a;text-align:center;max-width:320px;min-height:1em"></div>
 </div>
 
 <!-- APP -->
 <div id="app" style="display:none">
   <div class="header">
-    <div class="hlogo">WW <span>Admin</span></div>
+    <div class="hlogo"><img src="ww-mark-cream.png" alt="" style="height:22px;vertical-align:middle;margin-right:8px">WW <span>Admin</span></div>
     <div class="hright">
       <div class="conn-badge"><div class="dot" id="dot"></div><span id="clbl">Offline</span></div>
       <button class="signout-btn" onclick="signOut()">← Sign out</button>
@@ -253,17 +256,10 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
 
 <script>
 const RELAY_URL = 'https://gamification-ww.onrender.com';
-const API_KEY   = 'ww-secret-2024';
+let   idToken   = null;   // Google ID token for the signed-in user (kept in memory only)
 
-/* ── USERS ───────────────────────────────────────────────────────── */
-// perms: array of trigger types allowed
-// lb: can edit leaderboard
-const USERS = [
-  { id:'surmeet',  name:'Surmeet',  init:'SU', role:'Assistant',       perms:['order','delivery','win'], lb:false },
-  { id:'manish',   name:'Manish',   init:'MA', role:'Accounts & Ops',  perms:['order','delivery'],       lb:true  },
-  { id:'miraj',    name:'Miraj',    init:'MI', role:'Billing',         perms:['order','delivery'],       lb:false },
-  { id:'sambhav',  name:'Sambhav',  init:'SK', role:'Founder & MD',    perms:['order','delivery','win'], lb:true  },
-];
+/* ── ADMIN ACCESS ─────────────────────────────────────────────────── */
+// Who can sign in, and what they can do, is decided by the server (server.js → ADMIN_USERS).
 
 /* ── TEAM ────────────────────────────────────────────────────────── */
 // Full sales team from SALES_TEAM_with_Bitrix_ID.xlsx
@@ -369,26 +365,52 @@ let history        = JSON.parse(sessionStorage.getItem('ww_hist')||'[]');
 let currentTab     = 'trigger';
 let currentTier    = TIERS[0];
 
-/* ── LOGIN ───────────────────────────────────────────────────────── */
-function renderLogin() {
-  document.getElementById('user-cards').innerHTML = USERS.map(u=>`
-    <div class="user-card ${u.perms.length>2?'admin-card':''}" onclick="login('${u.id}')">
-      <div class="uc-avatar">${u.init}</div>
-      <div class="uc-name">${u.name}</div>
-      <div class="uc-role">${u.role}</div>
-      <div class="uc-perm ${u.perms.length>2?'all':'ord'}">${u.perms.length>2?'Full access':'Orders & Delivery'}</div>
-    </div>`).join('');
+/* ── LOGIN (Google Sign-In) ──────────────────────────────────────── */
+function authHeaders() {
+  return { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken };
 }
 
-function login(uid) {
-  currentUser = USERS.find(u=>u.id===uid);
+async function renderLogin() {
+  const msg=document.getElementById('login-msg');
+  try {
+    const { clientId } = await fetch(RELAY_URL+'/auth/config').then(r=>r.json());
+    await new Promise(res=>{ (function wait(){ window.google?.accounts?.id ? res() : setTimeout(wait,100); })(); });
+    google.accounts.id.initialize({ client_id: clientId, callback: onGoogleSignIn, auto_select: true, hd: 'uniqueflooring.in' });
+    google.accounts.id.renderButton(document.getElementById('g-signin'), { theme:'filled_black', size:'large', shape:'pill', text:'signin_with' });
+    google.accounts.id.prompt();
+  } catch(e) {
+    msg.textContent='Server is waking up — refresh in 30 seconds.';
+  }
+}
+
+async function onGoogleSignIn(resp) {
+  const msg=document.getElementById('login-msg');
+  msg.textContent='Checking access…';
+  try {
+    const r=await fetch(RELAY_URL+'/auth/me',{ headers:{ 'Authorization':'Bearer '+resp.credential } });
+    const d=await r.json();
+    if(!r.ok){ msg.textContent=d.error||'Access denied'; google.accounts.id.disableAutoSelect(); return; }
+    idToken=resp.credential;
+    msg.textContent='';
+    login(d);
+  } catch { msg.textContent='Server unreachable — try again in a moment.'; }
+}
+
+// Google tokens last ~1 hour; on expiry the server returns 401 and we ask to sign in again
+function handleAuthError(r) {
+  if(r.status===401){ showToast('Session expired — please sign in again','err'); setTimeout(signOut,1200); return true; }
+  return false;
+}
+
+function login(user) {
+  currentUser = user;
   if (!currentUser) return;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
   selectedType = currentUser.perms[0];
 
   // Show tabs only if leaderboard access
-  if (currentUser.lb) document.getElementById('tabs').style.display='flex';
+  document.getElementById('tabs').style.display = currentUser.lb ? 'flex' : 'none';
 
   renderRoleBanner();
   renderQuickRow();
@@ -403,7 +425,8 @@ function login(uid) {
 }
 
 function signOut() {
-  currentUser=null;
+  currentUser=null; idToken=null;
+  try{ google.accounts.id.disableAutoSelect(); }catch{}
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   if(ws) ws.close();
@@ -520,9 +543,10 @@ async function fire(triggerType, person, product, client, location, amountRaw) {
   const payload={ triggerType, tier, headline, subtext:cfg.subtext, person, product, client, location, amount:fmtAmt(raw) };
 
   try {
-    const r=await fetch(`${RELAY_URL}/trigger?key=${API_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if(!r.ok) throw new Error();
+    const r=await fetch(`${RELAY_URL}/trigger`,{method:'POST',headers:authHeaders(),body:JSON.stringify(payload)});
+    if(handleAuthError(r)) return;
     const d=await r.json();
+    if(!r.ok){ showToast(d.error||'Could not fire','err'); return; }
     showToast(`${tier.icon} ${tier.name} fired on ${d.screens} screen${d.screens!==1?'s':''}!`,'ok');
     addHistory(triggerType,person,product,client,location,fmtAmt(raw));
     document.getElementById('f-amount').value='';
@@ -531,8 +555,7 @@ async function fire(triggerType, person, product, client, location, amountRaw) {
     document.getElementById('f-location').value='';
     onAmountChange();
   } catch {
-    if(ws&&ws.readyState===1){ ws.send(JSON.stringify({type:'celebration',...payload})); showToast('Sent via WebSocket','ok'); addHistory(triggerType,person,product,client,location,fmtAmt(raw)); }
-    else showToast('Server unreachable','err');
+    showToast('Server unreachable','err');
   }
 }
 
@@ -587,8 +610,9 @@ async function saveLeaderboard() {
     orders: parseInt(document.getElementById('lb-orders-'+m.init).value)||0,
   }));
   try {
-    const r=await fetch(`${RELAY_URL}/leaderboard?key=${API_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teams,weekLabel,updatedBy:currentUser.name})});
-    if(!r.ok) throw new Error();
+    const r=await fetch(`${RELAY_URL}/leaderboard`,{method:'POST',headers:authHeaders(),body:JSON.stringify({teams,weekLabel})});
+    if(handleAuthError(r)) return;
+    if(!r.ok){ const d=await r.json().catch(()=>({})); showToast(d.error||'Could not save','err'); return; }
     showToast('🏆 Leaderboard pushed to screen!','ok');
     loadCurrentLb();
   } catch { showToast('Could not save — check connection','err'); }
@@ -597,7 +621,7 @@ async function saveLeaderboard() {
 /* ── HISTORY ─────────────────────────────────────────────────────── */
 function addHistory(type,person,product,client,location,amount) {
   const time=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
-  history.unshift({type,person,product,client,location,amount,time});
+  history.unshift({type,person,product,client,location,amount,time,by:currentUser?.name||''});
   if(history.length>30) history.pop();
   sessionStorage.setItem('ww_hist',JSON.stringify(history));
   if(currentTab==='hist') renderHistory();
@@ -610,7 +634,7 @@ function renderHistory() {
       <div class="hdot ${h.type}"></div>
       <div class="hinfo"><div class="hname">${h.person} · ${h.product||'—'}</div><div class="hsub">${h.client}${h.location?' · '+h.location:''} · ${TYPE_CFG[h.type]?.label||h.type}</div></div>
       <div class="hval">${h.amount}</div>
-      <div class="htime">${h.time}</div>
+      <div class="htime">${h.time}${h.by?'<br>'+h.by:''}</div>
     </div>`).join('');
 }
 
