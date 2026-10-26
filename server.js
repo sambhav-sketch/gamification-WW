@@ -7,7 +7,7 @@
  * - Stores and serves leaderboard data (Manish updates every Monday)
  *
  * Deploy on Railway.app: railway up
- * Env vars: API_KEY, BITRIX_WEBHOOK_URL, PORT
+ * Env vars: GOOGLE_CLIENT_ID, BITRIX_WEBHOOK_URL, PORT
  */
 
 const express  = require('express');
@@ -15,13 +15,14 @@ const WebSocket = require('ws');
 const https    = require('https');
 const fs       = require('fs');
 const path     = require('path');
+const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
@@ -32,7 +33,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const PORT    = process.env.PORT || 3000;
-const API_KEY = process.env.API_KEY || 'ww-secret-2024';
+// ── ADMIN ACCESS (Google Sign-In) ─────────────────────────────────────────────
+// Only these Google Workspace accounts can use the admin panel.
+// perms = celebration types allowed · lb = can push the weekly leaderboard
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '562668480557-l07d7pdhpj7gob088ngveltduonr7b0b.apps.googleusercontent.com';
+const ALLOWED_DOMAIN   = 'uniqueflooring.in';
+const ADMIN_USERS = {
+  'sambhav@uniqueflooring.in':  { name:'Sambhav', init:'SK', role:'Founder & MD',   perms:['order','delivery','win'], lb:true  },
+  'surmeet@uniqueflooring.in':  { name:'Surmeet', init:'SU', role:'Assistant',      perms:['order','delivery','win'], lb:false },
+  'accounts2@uniqueflooring.in':{ name:'Ankush',  init:'AN', role:'Accounts & Ops', perms:['order','delivery'],       lb:true  },
+  'miraj@uniqueflooring.in':    { name:'Miraj',   init:'MI', role:'Billing',        perms:['order','delivery'],       lb:false },
+};
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Your Bitrix24 inbound webhook URL — set in Railway env as BITRIX_WEBHOOK_URL
 // Format: https://YOUR-DOMAIN.bitrix24.com/rest/1/YOUR-WEBHOOK-TOKEN/
@@ -382,11 +394,29 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
-function requireKey(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.key;
-  if (key !== API_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  next();
+// Every admin request carries a Google ID token: "Authorization: Bearer <token>"
+async function requireUser(req, res, next) {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken: token, audience: GOOGLE_CLIENT_ID });
+    const p      = ticket.getPayload();
+    const email  = String(p.email || '').toLowerCase();
+    if (!p.email_verified || p.hd !== ALLOWED_DOMAIN || !email.endsWith('@' + ALLOWED_DOMAIN)) {
+      return res.status(403).json({ error: 'Only ' + ALLOWED_DOMAIN + ' accounts are allowed' });
+    }
+    const user = ADMIN_USERS[email];
+    if (!user) return res.status(403).json({ error: email + ' is not on the admin list' });
+    req.user = { email, ...user };
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Session expired — sign in again' });
+  }
 }
+
+// Admin page reads the Client ID from here, and confirms who is signed in
+app.get('/auth/config', (req, res) => res.json({ clientId: GOOGLE_CLIENT_ID }));
+app.get('/auth/me', requireUser, (req, res) => res.json(req.user));
 
 // ── BITRIX INBOUND WEBHOOK ────────────────────────────────────────────────────
 app.post('/bitrix/deal', (req, res) => {
@@ -448,8 +478,12 @@ app.post('/bitrix/deal', (req, res) => {
 
 // ── MANUAL TRIGGER ────────────────────────────────────────────────────────────
 // triggerType: 'order' (advance received) | 'delivery' (material dispatched)
-app.post('/trigger', requireKey, (req, res) => {
+app.post('/trigger', requireUser, (req, res) => {
   const { triggerType, person, product, client, location, amount } = req.body;
+  if (!req.user.perms.includes(triggerType)) {
+    return res.status(403).json({ error: 'You are not allowed to fire ' + triggerType });
+  }
+  console.log(`[TRIGGER] ${triggerType} ${amount} for ${person} by ${req.user.email}`);
 
   if (!['order','delivery'].includes(triggerType)) {
     return res.status(400).json({ error: 'triggerType must be order or delivery' });
@@ -539,7 +573,7 @@ app.get('/ticker', (req, res) => {
 });
 
 // Force-refresh ticker (Sambhav can call this)
-app.post('/ticker/refresh', requireKey, async (req, res) => {
+app.post('/ticker/refresh', requireUser, async (req, res) => {
   await pollBitrix();
   broadcast({ type: 'ticker', data: tickerCache });
   res.json({ ok: true, data: tickerCache });
@@ -551,8 +585,11 @@ app.get('/leaderboard', (req, res) => {
 });
 
 // Manish updates this every Monday
-app.post('/leaderboard', requireKey, (req, res) => {
-  const { teams, weekLabel, updatedBy } = req.body;
+app.post('/leaderboard', requireUser, (req, res) => {
+  if (!req.user.lb) return res.status(403).json({ error: 'You are not allowed to update the leaderboard' });
+  const { teams, weekLabel } = req.body;
+  const updatedBy = req.user.name;
+  console.log(`[LEADERBOARD] updated by ${req.user.email}`);
   if (!Array.isArray(teams)) return res.status(400).json({ error: 'teams must be array' });
 
   leaderboardData = {
