@@ -1,0 +1,8 @@
+{
+  "name": "wonderwoods-sales-gamification",
+  "version": "1.0.0",
+  "description": "Real-time sales floor display relay for Wonderwoods",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.18.2", "ws": "^8.16.0" }
+}
