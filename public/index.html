@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wonderwoods Sales Floor</title>
+<link rel="icon" href="ww-mark-cream.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,300;0,400;0,600;0,700;0,800;0,900;1,700&amp;family=Barlow:wght@300;400;500&amp;display=swap" rel="stylesheet">
+<style>
+:root {
+  --gold:#C9A84C; --gold-l:#E8C878; --gold-d:#8A6E2E;
+  --forest:#0D1510; --mid:#172012; --surface:#1A2A1E; --surface2:#1F3023;
+  --border:rgba(201,168,76,0.15); --cream:#F5EFE0; --dim:rgba(245,239,224,0.4);
+  --dim2:rgba(245,239,224,0.6);
+  --spark:#7EA8C8; --done:#C07B3E; --bomb:#C9A84C; --super:#E8C878;
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',sans-serif; width:100vw; height:100vh; overflow:hidden; user-select:none; }
+
+/* LAYOUT */
+.layout { display:grid; grid-template-rows:68px 1fr 46px; grid-template-columns:1fr 320px; grid-template-areas:"header header" "main sidebar" "footer footer"; height:100vh; width:100vw; }
+
+/* HEADER */
+.header { grid-area:header; background:rgba(13,21,16,.97); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 24px; gap:16px; }
+.brand { font-family:'Barlow Condensed',sans-serif; font-size:1.55rem; font-weight:900; letter-spacing:1px; flex-shrink:0; }
+.brand span { color:var(--gold); }
+.tickers { display:flex; gap:10px; flex:1; overflow:hidden; }
+.ticker-card { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:7px 12px; display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; overflow:hidden; position:relative; }
+.ticker-card::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; border-radius:3px 0 0 3px; }
+.ticker-card.created::before { background:var(--spark); }
+.ticker-card.won::before     { background:var(--gold); }
+.ticker-card.pipeline::before { background:var(--done); }
+.tk-label { font-family:'Barlow Condensed',sans-serif; font-size:.52rem; letter-spacing:3px; text-transform:uppercase; color:var(--dim); }
+.tk-main { display:flex; align-items:baseline; gap:7px; }
+.tk-count { font-family:'Barlow Condensed',sans-serif; font-size:1.35rem; font-weight:900; line-height:1; color:var(--gold-l); }
+.tk-value { font-family:'Barlow Condensed',sans-serif; font-size:.95rem; font-weight:700; color:var(--cream); }
+.tk-sub { font-size:.58rem; color:var(--dim2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.header-right { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.clock { font-family:'Barlow Condensed',sans-serif; font-size:1.15rem; font-weight:700; color:var(--dim2); }
+.conn-dot { width:8px; height:8px; border-radius:50%; background:#333; transition:background .4s; }
+.conn-dot.live { background:#4CAF50; animation:blink 2s infinite; }
+.conn-dot.err  { background:#C0392B; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* MAIN */
+.main { grid-area:main; display:flex; flex-direction:column; padding:16px 18px 12px 24px; gap:12px; overflow:hidden; }
+.motto { font-family:'Barlow Condensed',sans-serif; font-size:2.8rem; font-weight:900; line-height:1; letter-spacing:-1px; text-transform:uppercase; color:rgba(245,239,224,.055); flex-shrink:0; }
+.motto em { color:rgba(201,168,76,.09); font-style:normal; }
+
+/* Stat tiles */
+.today-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; flex-shrink:0; }
+.stat-tile { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:10px 14px; }
+.st-label { font-family:'Barlow Condensed',sans-serif; font-size:.52rem; letter-spacing:3px; text-transform:uppercase; color:var(--dim); }
+.st-value { font-family:'Barlow Condensed',sans-serif; font-size:1.75rem; font-weight:900; line-height:1.1; color:var(--gold-l); }
+.st-sub { font-size:.58rem; color:var(--dim2); }
+
+/* Feed */
+.feed-wrap { flex:1; overflow:hidden; display:flex; flex-direction:column; gap:7px; }
+.feed-label { font-family:'Barlow Condensed',sans-serif; font-size:.52rem; letter-spacing:4px; text-transform:uppercase; color:var(--gold); padding-bottom:5px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.feed { display:flex; flex-direction:column; gap:5px; overflow:hidden; flex:1; }
+.feed-item { background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:8px 12px; display:flex; align-items:center; gap:10px; animation:slideIn .4s ease; }
+@keyframes slideIn{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+.fi-tier { font-size:1.05rem; flex-shrink:0; }
+.fi-info { flex:1; min-width:0; }
+.fi-head { font-family:'Barlow Condensed',sans-serif; font-size:.82rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fi-sub  { font-size:.58rem; color:var(--dim2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fi-amount { font-family:'Barlow Condensed',sans-serif; font-size:.95rem; font-weight:800; flex-shrink:0; }
+.fi-amount.tier-spark { color:var(--spark); }
+.fi-amount.tier-done  { color:var(--done); }
+.fi-amount.tier-bomb  { color:var(--bomb); }
+.fi-amount.tier-super { color:var(--super); }
+.fi-time { font-size:.55rem; color:var(--dim); flex-shrink:0; }
+
+/* SIDEBAR */
+.sidebar { grid-area:sidebar; background:var(--mid); border-left:1px solid var(--border); display:flex; flex-direction:column; padding:13px 14px; gap:0; overflow:hidden; }
+.lb-header { flex-shrink:0; margin-bottom:9px; }
+.lb-title { font-family:'Barlow Condensed',sans-serif; font-size:.56rem; letter-spacing:4px; text-transform:uppercase; color:var(--gold); }
+.lb-week  { font-size:.5rem; color:var(--dim); margin-top:2px; }
+.lb-list  { flex:1; display:flex; flex-direction:column; gap:5px; overflow:hidden; }
+.lb-row { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; display:flex; align-items:center; gap:8px; position:relative; overflow:hidden; transition:border-color .5s,background .5s; }
+.lb-row.rank-1 { border-color:rgba(201,168,76,.5); }
+.lb-row.rank-2 { border-color:rgba(192,123,62,.35); }
+.lb-row.rank-3 { border-color:rgba(138,106,46,.25); }
+.lb-row.highlight { border-color:var(--gold) !important; background:rgba(201,168,76,.12) !important; box-shadow:0 0 14px rgba(201,168,76,.22); }
+.lb-rank { font-family:'Barlow Condensed',sans-serif; font-size:1.25rem; font-weight:900; flex-shrink:0; width:20px; text-align:center; }
+.rank-1 .lb-rank { color:var(--gold-l); }
+.rank-2 .lb-rank { color:var(--done); }
+.rank-3 .lb-rank { color:rgba(201,168,76,.5); }
+.lb-row:not(.rank-1):not(.rank-2):not(.rank-3) .lb-rank { color:var(--dim); }
+.lb-av { width:28px; height:28px; border-radius:50%; background:var(--forest); border:1.5px solid rgba(201,168,76,.2); display:flex; align-items:center; justify-content:center; font-family:'Barlow Condensed',sans-serif; font-size:.65rem; font-weight:800; color:var(--gold-l); flex-shrink:0; }
+.lb-info { flex:1; min-width:0; }
+.lb-name { font-family:'Barlow Condensed',sans-serif; font-size:.78rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lb-role { font-size:.52rem; color:var(--dim); margin-top:1px; }
+.lb-stats { text-align:right; flex-shrink:0; }
+.lb-rev  { font-family:'Barlow Condensed',sans-serif; font-size:.88rem; font-weight:800; color:var(--gold-l); }
+.lb-wins { font-size:.5rem; color:var(--dim2); }
+.lb-bar  { position:absolute; bottom:0; left:0; height:2px; background:var(--gold); transition:width 1s ease; opacity:.35; }
+.rank-1 .lb-bar { opacity:.65; }
+
+/* FOOTER */
+.footer { grid-area:footer; background:rgba(13,21,16,.95); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 24px; gap:14px; font-size:.55rem; color:var(--dim); letter-spacing:1px; }
+.footer-brand { font-family:'Barlow Condensed',sans-serif; font-size:.68rem; font-weight:700; color:var(--gold); letter-spacing:3px; text-transform:uppercase; }
+.footer-spacer { flex:1; }
+
+/* CELEBRATION OVERLAY */
+#celebration { position:fixed; inset:0; z-index:100; pointer-events:none; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity .4s; }
+#celebration.show { opacity:1; }
+.cel-bg { position:absolute; inset:0; }
+
+/* Phase 1 */
+.cel-phase1 { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; transition:opacity .5s; }
+.cel-tier-badge { font-family:'Barlow Condensed',sans-serif; font-size:.68rem; letter-spacing:6px; text-transform:uppercase; padding:4px 18px; border-radius:30px; margin-bottom:14px; border:1px solid currentColor; font-weight:700; }
+.cel-icon { font-size:6.5rem; line-height:1; margin-bottom:6px; }
+.cel-headline { font-family:'Barlow Condensed',sans-serif; font-size:5rem; font-weight:900; line-height:1; text-transform:uppercase; letter-spacing:-2px; text-align:center; }
+.cel-subtext { font-size:.9rem; letter-spacing:5px; text-transform:uppercase; color:var(--dim2); margin-top:4px; }
+.cel-detail-row { display:flex; align-items:center; gap:18px; margin-top:20px; background:rgba(0,0,0,.52); border:1px solid var(--border); border-radius:14px; padding:12px 24px; }
+.cel-detail { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.cel-detail-label { font-size:.5rem; letter-spacing:3px; text-transform:uppercase; color:var(--dim); }
+.cel-detail-value { font-family:'Barlow Condensed',sans-serif; font-size:1.05rem; font-weight:700; color:var(--cream); max-width:160px; text-align:center; }
+.cel-divider { width:1px; height:36px; background:var(--border); }
+.cel-amount-big { font-family:'Barlow Condensed',sans-serif; font-size:2.2rem; font-weight:900; line-height:1; }
+
+/* Phase 2 */
+.cel-phase2 { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; opacity:0; transition:opacity .5s; }
+.cel-spotlight-name { font-family:'Barlow Condensed',sans-serif; font-size:8.5rem; font-weight:900; line-height:1; text-transform:uppercase; letter-spacing:-3px; text-align:center; }
+.cel-spotlight-role { font-size:.75rem; letter-spacing:6px; text-transform:uppercase; color:var(--dim2); margin-top:4px; }
+.cel-spotlight-stats { display:flex; gap:30px; margin-top:26px; }
+.cel-sp-stat { text-align:center; }
+.cel-sp-val { font-family:'Barlow Condensed',sans-serif; font-size:2rem; font-weight:900; line-height:1; color:var(--gold-l); }
+.cel-sp-lbl { font-size:.52rem; letter-spacing:3px; text-transform:uppercase; color:var(--dim); margin-top:4px; }
+
+/* Tier color rules */
+.tier-spark .cel-tier-badge,.tier-spark .cel-icon,.tier-spark .cel-headline,.tier-spark .cel-amount-big,.tier-spark .cel-spotlight-name { color:var(--spark); }
+.tier-done  .cel-tier-badge,.tier-done  .cel-icon,.tier-done  .cel-headline,.tier-done  .cel-amount-big,.tier-done  .cel-spotlight-name { color:var(--done); }
+.tier-bomb  .cel-tier-badge,.tier-bomb  .cel-icon,.tier-bomb  .cel-headline,.tier-bomb  .cel-amount-big,.tier-bomb  .cel-spotlight-name { color:var(--bomb); }
+.tier-super .cel-tier-badge,.tier-super .cel-icon,.tier-super .cel-headline,.tier-super .cel-amount-big,.tier-super .cel-spotlight-name { color:var(--super); }
+
+/* Confetti */
+.confetti-piece { position:absolute; width:10px; height:10px; border-radius:2px; animation:confettiFall 3s ease-in forwards; }
+@keyframes confettiFall{0%{transform:translateY(-100px) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="brand"><img src="ww-logo-cream.png" alt="Wonderwoods" style="height:26px;display:block"></div>
+    <div class="tickers">
+      <div class="ticker-card created">
+        <div class="tk-label">Deals Created Today</div>
+        <div class="tk-main"><div class="tk-count" id="tk-created-count">—</div><div class="tk-value" id="tk-created-value"></div></div>
+        <div class="tk-sub" id="tk-created-sub">Connecting…</div>
+      </div>
+      <div class="ticker-card won">
+        <div class="tk-label">Deals Won Today</div>
+        <div class="tk-main"><div class="tk-count" id="tk-won-count">—</div><div class="tk-value" id="tk-won-value"></div></div>
+        <div class="tk-sub" id="tk-won-sub">Connecting…</div>
+      </div>
+      <div class="ticker-card pipeline">
+        <div class="tk-label">Live Pipeline Value</div>
+        <div class="tk-main"><div class="tk-count" id="tk-pipeline">—</div></div>
+        <div class="tk-sub">All open deals</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="clock" id="clock">00:00</div>
+      <div class="conn-dot" id="conn-dot"></div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="motto">Every call. Every visit. <em>Every win.</em></div>
+
+    <div class="today-bar">
+      <div class="stat-tile"><div class="st-label">Orders Confirmed</div><div class="st-value" id="s-orders">0</div><div class="st-sub">Advance received today</div></div>
+      <div class="stat-tile"><div class="st-label">Deliveries Today</div><div class="st-value" id="s-deliveries">0</div><div class="st-sub">Material dispatched</div></div>
+      <div class="stat-tile"><div class="st-label">Revenue Confirmed</div><div class="st-value" id="s-revenue">₹0</div><div class="st-sub">Order value today</div></div>
+      <div class="stat-tile"><div class="st-label">Deals Won</div><div class="st-value" id="s-wins">0</div><div class="st-sub">CRM closed today</div></div>
+    </div>
+
+    <div class="feed-wrap">
+      <div class="feed-label">Live Activity</div>
+      <div class="feed" id="feed">
+        <div class="feed-item" style="opacity:.35">
+          <div class="fi-tier">⚡</div>
+          <div class="fi-info"><div class="fi-head">Waiting for today's first event…</div><div class="fi-sub">Order confirmations and deliveries will appear here in real time</div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="lb-header">
+      <div class="lb-title">🏆 &nbsp;LEADERBOARD</div>
+      <div class="lb-week" id="lb-week">Updated by Manish every Monday</div>
+    </div>
+    <div class="lb-list" id="lb-list"></div>
+  </aside>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-brand"><img src="ww-logo-cream.png" alt="Wonderwoods" style="height:11px;display:block;opacity:.7"></div>
+    <span>Sales Floor · Live Display</span>
+    <div class="footer-spacer"></div>
+    <span id="countdown-msg" style="color:var(--gold-l);font-family:'Barlow Condensed',sans-serif;font-size:.8rem;font-weight:700;letter-spacing:2px;display:none;animation:blink 1.5s infinite;"></span>
+    <span id="ticker-refresh">Tickers refresh every 5 min</span>
+    <span id="date-str"></span>
+  </footer>
+
+</div>
+
+<!-- CELEBRATION -->
+<div id="celebration">
+  <div class="cel-bg"></div>
+  <div class="cel-phase1" id="cel-p1">
+    <div class="cel-tier-badge" id="cel-tier-badge">DEAL DONE</div>
+    <div class="cel-icon" id="cel-icon">🔥</div>
+    <div class="cel-headline" id="cel-headline">ORDER LOCKED!</div>
+    <div class="cel-subtext" id="cel-subtext">Advance Received</div>
+    <div class="cel-detail-row">
+      <div class="cel-detail"><div class="cel-detail-label">Salesperson</div><div class="cel-detail-value" id="cel-person">—</div></div>
+      <div class="cel-divider"></div>
+      <div class="cel-detail"><div class="cel-detail-label">Product</div><div class="cel-detail-value" id="cel-product">—</div></div>
+      <div class="cel-divider"></div>
+      <div class="cel-detail"><div class="cel-detail-label">Client</div><div class="cel-detail-value" id="cel-client">—</div></div>
+      <div class="cel-divider"></div>
+      <div class="cel-detail"><div class="cel-detail-label">Location</div><div class="cel-detail-value" id="cel-location">—</div></div>
+      <div class="cel-divider"></div>
+      <div class="cel-amount-big" id="cel-amount">₹0</div>
+    </div>
+  </div>
+  <div class="cel-phase2" id="cel-p2">
+    <div class="cel-spotlight-name" id="cel-sp-name">SAMARTH</div>
+    <div class="cel-spotlight-role" id="cel-sp-role">South &amp; North</div>
+    <div class="cel-spotlight-stats">
+      <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-wins">0</div><div class="cel-sp-lbl">Month Wins</div></div>
+      <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-rev">₹0</div><div class="cel-sp-lbl">Month Revenue</div></div>
+      <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-rank">#1</div><div class="cel-sp-lbl">Leaderboard Rank</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── CONFIG (update after Railway deploy) ─────────────────────────────────── */
+const WS_URL     = 'wss://gamification-ww.onrender.com';
+const SERVER_URL = 'https://gamification-ww.onrender.com';
+
+/* ── TEAM ────────────────────────────────────────────────────────────────── */
+const TEAM = [
+  { name:'Samarth Khandelwal', init:'SK', role:'South & North'  },
+  { name:'Abhishek Sharma',    init:'AS', role:'Delhi B2B'       },
+  { name:'Vishal Poddar',      init:'VP', role:'West B2B'        },
+  { name:'Geet Rawat',         init:'GR', role:'Retail'          },
+  { name:'Anurag Khandelwal',  init:'AK', role:'Perscape (A&D)'  },
+];
+
+const TIER_GLOW = {
+  'tier-spark':'rgba(126,168,200,0.14)',
+  'tier-done' :'rgba(192,123,62,0.18)',
+  'tier-bomb' :'rgba(201,168,76,0.20)',
+  'tier-super':'rgba(232,200,120,0.32)',
+};
+
+/* ── SESSION STATE ───────────────────────────────────────────────────────── */
+// todayStats and monthStats are now server-driven — no sessionStorage for counts
+let feedItems = [];
+let lbData    = null;
+
+/* ── FORMAT ──────────────────────────────────────────────────────────────── */
+function fmt(v) {
+  v = parseFloat(v)||0;
+  if (v >= 10000000) return '₹'+(v/10000000).toFixed(1)+'Cr';
+  if (v >= 100000)   return '₹'+(v/100000).toFixed(1)+'L';
+  if (v >= 1000)     return '₹'+(v/1000).toFixed(0)+'K';
+  return '₹'+v;
+}
+function parseRaw(s) {
+  s = String(s||'').replace(/₹/g,'').trim();
+  if (/cr/i.test(s)) return parseFloat(s)*10000000;
+  if (/l/i.test(s))  return parseFloat(s)*100000;
+  if (/k/i.test(s))  return parseFloat(s)*1000;
+  return parseFloat(s)||0;
+}
+
+/* ── CLOCK ───────────────────────────────────────────────────────────────── */
+function tick() {
+  const n=new Date();
+  document.getElementById('clock').textContent = n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:false});
+  document.getElementById('date-str').textContent = n.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'});
+}
+setInterval(tick,1000); tick();
+// Midnight reload
+(function sched(){const n=new Date(),t=new Date(n);t.setDate(t.getDate()+1);t.setHours(0,0,8,0);setTimeout(()=>location.reload(),t-n);})();
+
+/* ── MONTHLY STATS + COUNTDOWN ───────────────────────────────────────────── */
+function renderMonthly(data, countdown) {
+  // Update month-total stat tile if it exists
+  const el = document.getElementById('s-month-rev');
+  if (el && data) el.textContent = fmt(data.totalRevenue || 0);
+
+  // Countdown banner in footer
+  const banner = document.getElementById('countdown-msg');
+  if (banner) {
+    if (countdown && countdown.active && countdown.message) {
+      banner.textContent = '⏳ ' + countdown.message;
+      banner.style.display = '';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+}
+
+// Fetch initial monthly state from server on load
+fetch(SERVER_URL+'/monthly').then(r=>r.json()).then(d=>renderMonthly(d.data, d.countdown)).catch(()=>{});
+
+/* ── TICKERS ─────────────────────────────────────────────────────────────── */
+function renderTicker(d) {
+  const c=d.dealsCreated||{}, w=d.dealsWon||{};
+  document.getElementById('tk-created-count').textContent = c.count??'—';
+  document.getElementById('tk-created-value').textContent = c.value?fmt(c.value):'';
+  document.getElementById('tk-created-sub').textContent   = (c.top4||[]).map(x=>x.person.split(' ')[0]+' · '+x.amount).join('  ·  ')||'No deals yet today';
+  document.getElementById('tk-won-count').textContent     = w.count??'—';
+  document.getElementById('tk-won-value').textContent     = w.value?fmt(w.value):'';
+  document.getElementById('tk-won-sub').textContent       = (w.top4||[]).map(x=>x.person.split(' ')[0]+' · '+x.amount).join('  ·  ')||'No wins yet today';
+  document.getElementById('tk-pipeline').textContent      = d.pipelineTotal?fmt(d.pipelineTotal):'—';
+  if (d.fetchedAt) {
+    const t=new Date(d.fetchedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+    document.getElementById('ticker-refresh').textContent='Last updated '+t;
+  }
+}
+fetch(SERVER_URL+'/ticker').then(r=>r.json()).then(renderTicker).catch(()=>{});
+
+/* ── LEADERBOARD ─────────────────────────────────────────────────────────── */
+function renderLeaderboard(data, highlight) {
+  lbData = data;
+  const list = document.getElementById('lb-list');
+  if (!data?.teams?.length) {
+    list.innerHTML='<div style="color:var(--dim);font-size:.65rem;text-align:center;padding:18px 0">Manish updates this<br>every Monday</div>';
+    document.getElementById('lb-week').textContent='Pending first update';
+    return;
+  }
+  const sorted=[...data.teams].sort((a,b)=>(b.revenue||0)-(a.revenue||0));
+  const maxRev=sorted[0]?.revenue||1;
+  document.getElementById('lb-week').textContent=data.weekLabel?'W/e '+data.weekLabel+' · Updated by '+(data.updatedBy||'Manish'):'Current standings';
+  list.innerHTML=sorted.map((t,i)=>{
+    const init=t.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const bar=Math.round(((t.revenue||0)/maxRev)*100);
+    const hl=highlight&&t.name===highlight?' highlight':'';
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
+    return `<div class="lb-row rank-${i+1}${hl}" id="lb-${t.name.replace(/\s+/g,'-')}">
+      <div class="lb-rank">${medal}</div>
+      <div class="lb-av">${init}</div>
+      <div class="lb-info"><div class="lb-name">${t.name.split(' ')[0]}</div><div class="lb-role">${t.role||''}</div></div>
+      <div class="lb-stats"><div class="lb-rev">${t.revenue?fmt(t.revenue):'—'}</div><div class="lb-wins">${t.wins||0}W · ${t.orders||0}O</div></div>
+      <div class="lb-bar" style="width:${bar}%"></div>
+    </div>`;
+  }).join('');
+}
+fetch(SERVER_URL+'/leaderboard').then(r=>r.json()).then(d=>renderLeaderboard(d)).catch(()=>renderLeaderboard(null));
+fetch(SERVER_URL+'/today').then(r=>r.json()).then(d=>renderToday(d)).catch(()=>{});
+
+/* ── TODAY STATS ─────────────────────────────────────────────────────────── */
+// Rendered from server broadcast (type:'today') — survives TV refresh
+function renderToday(d) {
+  if (!d) return;
+  document.getElementById('s-orders').textContent     = d.orders     || 0;
+  document.getElementById('s-deliveries').textContent = d.deliveries || 0;
+  document.getElementById('s-revenue').textContent    = fmt(d.revenue || 0);
+  document.getElementById('s-wins').textContent       = d.wins       || 0;
+}
+// Also called on celebration events (adds to feed, no local counting)
+function updateStats(evt) {
+  // Stats come from server via 'today' broadcast — nothing to compute client-side
+  addFeed(evt);
+}
+
+/* ── FEED ────────────────────────────────────────────────────────────────── */
+function addFeed(evt) {
+  const t=evt.tier||{cls:'tier-done',icon:'🔥',name:'DEAL DONE'};
+  const time=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+  feedItems.unshift({t,evt,time});
+  if(feedItems.length>6) feedItems.pop();
+  document.getElementById('feed').innerHTML=feedItems.map(f=>`
+    <div class="feed-item">
+      <div class="fi-tier">${f.t.icon}</div>
+      <div class="fi-info">
+        <div class="fi-head">${f.evt.person} · ${f.evt.product||f.evt.client||'—'}</div>
+        <div class="fi-sub">${f.evt.client}${f.evt.location?' · '+f.evt.location:''} · ${f.evt.subtext||''}</div>
+      </div>
+      <div class="fi-amount ${f.t.cls}">${f.evt.amount}</div>
+      <div class="fi-time">${f.time}</div>
+    </div>`).join('');
+}
+
+/* ── CELEBRATION ─────────────────────────────────────────────────────────── */
+const PHASE1=5000, PHASE2=5000;
+let celTimer=null;
+
+function celebrate(evt) {
+  const tier=evt.tier||{cls:'tier-done',icon:'🔥',name:'DEAL DONE'};
+  const cel=document.getElementById('celebration');
+  const p1=document.getElementById('cel-p1'), p2=document.getElementById('cel-p2');
+  clearTimeout(celTimer);
+
+  // Apply tier class to overlay
+  cel.className=tier.cls+' show';
+
+  // Background glow
+  document.querySelector('.cel-bg').style.background=
+    `radial-gradient(ellipse at 50% 50%, ${TIER_GLOW[tier.cls]||'rgba(201,168,76,0.18)'} 0%, transparent 70%)`;
+
+  // Phase 1 content
+  document.getElementById('cel-tier-badge').textContent = tier.name;
+  document.getElementById('cel-icon').textContent       = tier.icon;
+  document.getElementById('cel-headline').textContent   = evt.headline||tier.name;
+  document.getElementById('cel-subtext').textContent    = evt.subtext||'';
+  document.getElementById('cel-person').textContent     = evt.person||'—';
+  document.getElementById('cel-product').textContent    = evt.product||'—';
+  document.getElementById('cel-client').textContent     = evt.client||'—';
+  document.getElementById('cel-location').textContent   = evt.location||'—';
+  document.getElementById('cel-amount').textContent     = evt.amount||'—';
+
+  // Phase 2 spotlight
+  const fname=(evt.person||'').split(' ')[0].toUpperCase();
+  const tm=TEAM.find(t=>t.name===evt.person)||{};
+  const ms=monthStats[evt.person]||{wins:0,rev:0};
+  const sorted=lbData?[...lbData.teams].sort((a,b)=>(b.revenue||0)-(a.revenue||0)):[];
+  const rank=sorted.findIndex(t=>t.name===evt.person)+1;
+  document.getElementById('cel-sp-name').textContent = fname;
+  document.getElementById('cel-sp-role').textContent = tm.role||'';
+  document.getElementById('cel-sp-wins').textContent = ms.wins||0;
+  document.getElementById('cel-sp-rev').textContent  = fmt(ms.rev||0);
+  document.getElementById('cel-sp-rank').textContent = rank?'#'+rank:'—';
+
+  // Confetti for SUPER
+  document.querySelectorAll('.confetti-piece').forEach(c=>c.remove());
+  if(tier.cls==='tier-super') {
+    const cols=['#E8C878','#C9A84C','#F5EFE0','#8AA8C8','#C07B3E'];
+    for(let i=0;i<60;i++){
+      const c=document.createElement('div'); c.className='confetti-piece';
+      c.style.cssText=`left:${Math.random()*100}vw;background:${cols[Math.floor(Math.random()*cols.length)]};animation-delay:${Math.random()*2}s;animation-duration:${2.5+Math.random()*2}s;width:${6+Math.random()*8}px;height:${6+Math.random()*8}px`;
+      cel.appendChild(c);
+    }
+  }
+
+  p1.style.opacity='1'; p2.style.opacity='0';
+
+  celTimer=setTimeout(()=>{
+    p1.style.opacity='0';
+    setTimeout(()=>{
+      p2.style.opacity='1';
+      // Highlight leaderboard
+      document.querySelectorAll('.lb-row.highlight').forEach(r=>r.classList.remove('highlight'));
+      const lbEl=document.getElementById('lb-'+(evt.person||'').replace(/\s+/g,'-'));
+      if(lbEl) lbEl.classList.add('highlight');
+    },500);
+    celTimer=setTimeout(()=>{
+      cel.className='';
+      document.querySelectorAll('.lb-row.highlight').forEach(r=>r.classList.remove('highlight'));
+      document.querySelectorAll('.confetti-piece').forEach(c=>c.remove());
+    },PHASE2);
+  },PHASE1);
+}
+
+/* ── WEBSOCKET ───────────────────────────────────────────────────────────── */
+const dot=document.getElementById('conn-dot');
+let ws, reconnTimer;
+function connect(){
+  if(WS_URL.includes('YOUR-APP')) return;
+  try{ws=new WebSocket(WS_URL);}catch(e){reconn();return;}
+  ws.onopen =()=>dot.className='conn-dot live';
+  ws.onclose=()=>{dot.className='conn-dot err';reconn();};
+  ws.onerror=()=>ws.close();
+  ws.onmessage=({data})=>{
+    let m; try{m=JSON.parse(data);}catch(e){return;}
+    if(m.type==='celebration'){addFeed(m);celebrate(m);}
+    if(m.type==='ticker')     {renderTicker(m.data);}
+    if(m.type==='leaderboard'){renderLeaderboard(m.data);}
+    if(m.type==='monthly')    {renderMonthly(m.data, m.countdown);}
+    if(m.type==='today')      {renderToday(m.data);}
+  };
+}
+function reconn(){clearTimeout(reconnTimer);reconnTimer=setTimeout(connect,5000);}
+connect();
+
+/* ── KEYBOARD DEMO ───────────────────────────────────────────────────────── */
+const demos={
+  '1':{tier:{cls:'tier-spark',icon:'⚡',name:'SPARK'},     triggerType:'order',   headline:'ORDER IN!',      subtext:'Advance Received · Order Confirmed', person:'Geet Rawat',         product:'Alfresco Terra 3m',   client:'Shree Constructions', location:'Noida',     amount:'₹68K'},
+  '2':{tier:{cls:'tier-done', icon:'🔥',name:'DEAL DONE'}, triggerType:'order',   headline:'ORDER LOCKED!',  subtext:'Advance Received · Order Confirmed', person:'Abhishek Sharma',    product:'Palazzo Engineered Oak', client:'Emaar Hills',      location:'Gurugram',  amount:'₹2.8L'},
+  '3':{tier:{cls:'tier-bomb', icon:'💥',name:'DEAL BOMB'}, triggerType:'delivery',headline:'BOMB AWAY! 💥',  subtext:'Material Dispatched',               person:'Vishal Poddar',      product:'Alfresco Castillo',   client:'Prestige Group',     location:'Mumbai',    amount:'₹7.5L'},
+  '4':{tier:{cls:'tier-super',icon:'🚀',name:'SUPER DEAL'},triggerType:'order',   headline:'SUPER DEAL! 🚀', subtext:'Advance Received · Order Confirmed', person:'Samarth Khandelwal', product:'Prodigy Chevron Oak', client:'DLF Phase V',        location:'Gurugram',  amount:'₹22L'},
+  'w':{tier:{cls:'tier-done', icon:'🏆',name:'DEAL DONE'}, triggerType:'win',     headline:'DEAL WON!',      subtext:'Deal Closed · CRM Updated',         person:'Anurag Khandelwal',  product:'Perscape Pergola',    client:'Studio Orion',       location:'Hyderabad', amount:'₹9L'},
+};
+document.addEventListener('keydown',e=>{
+  if(demos[e.key]){const d=demos[e.key];updateStats(d);addFeed(d);celebrate(d);}
+  if(e.key==='l'){
+    renderLeaderboard({weekLabel:'20 Oct 2026',updatedBy:'Manish',teams:[
+      {name:'Samarth Khandelwal',role:'South & North',wins:8,revenue:3450000,orders:12},
+      {name:'Abhishek Sharma',   role:'Delhi B2B',    wins:6,revenue:2180000,orders:9},
+      {name:'Vishal Poddar',     role:'West B2B',     wins:4,revenue:1650000,orders:7},
+      {name:'Geet Rawat',        role:'Retail',       wins:11,revenue:1120000,orders:18},
+      {name:'Anurag Khandelwal', role:'Perscape (A&D)',wins:3,revenue:980000,orders:5},
+    ]});
+  }
+});
+</script>
+
+
+<div></div></body></html>

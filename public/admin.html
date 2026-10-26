@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WW Sales Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --gold:#C9A84C; --gold-l:#E8C878; --forest:#111A14; --mid:#1A2B1F;
+  --surface:#1F2E23; --border:rgba(201,168,76,0.18); --cream:#F5EFE0;
+  --dim:rgba(245,239,224,0.45); --dim2:rgba(245,239,224,0.65);
+  --spark:#7EA8C8; --done:#C07B3E; --bomb:#C9A84C; --super:#E8C878;
+  --green:#4A6741; --green-l:#8FCC7D; --red:#C0392B;
+}
+*{ margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent; }
+html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans-serif;min-height:100vh; }
+
+/* LOGIN */
+#login-screen{ min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px; }
+.login-logo{ font-family:'Barlow Condensed',sans-serif;font-size:2rem;font-weight:800;letter-spacing:1px;margin-bottom:4px; }
+.login-logo span{ color:var(--gold); }
+.login-sub{ font-size:.65rem;letter-spacing:3px;text-transform:uppercase;color:var(--dim);margin-bottom:36px; }
+.login-title{ font-size:.6rem;letter-spacing:4px;text-transform:uppercase;color:var(--gold);margin-bottom:14px; }
+.user-cards{ display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:380px; }
+.user-card{ background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 12px;text-align:center;cursor:pointer;transition:all .18s;-webkit-user-select:none; }
+.user-card:active{ transform:scale(.95); }
+.user-card.admin-card{ border-color:rgba(201,168,76,.35); }
+.uc-avatar{ width:42px;height:42px;border-radius:50%;background:var(--mid);border:1.5px solid rgba(201,168,76,0.2);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:.95rem;font-weight:700;color:var(--gold-l);margin:0 auto 9px; }
+.admin-card .uc-avatar{ border-color:var(--gold); }
+.uc-name{ font-family:'Barlow Condensed',sans-serif;font-size:.92rem;font-weight:700; }
+.uc-role{ font-size:.58rem;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-top:3px; }
+.uc-perm{ margin-top:8px;display:inline-block;border-radius:20px;padding:3px 8px;font-size:.52rem;letter-spacing:1.5px;text-transform:uppercase; }
+.uc-perm.all{ background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:var(--gold); }
+.uc-perm.ord{ background:rgba(74,103,65,.18);border:1px solid rgba(74,103,65,.35);color:var(--green-l); }
+
+/* HEADER */
+.header{ position:sticky;top:0;z-index:50;background:rgba(17,26,20,.97);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px); }
+.hlogo{ font-family:'Barlow Condensed',sans-serif;font-size:1.25rem;font-weight:800; }
+.hlogo span{ color:var(--gold); }
+.hright{ display:flex;align-items:center;gap:9px; }
+.conn-badge{ display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:20px;background:rgba(255,255,255,.06);font-family:'Barlow Condensed',sans-serif;font-size:.6rem;letter-spacing:2px;text-transform:uppercase; }
+.dot{ width:6px;height:6px;border-radius:50%;background:#555;transition:background .3s; }
+.dot.live{ background:#4CAF50;animation:blink 2s infinite; }
+.dot.err{ background:var(--red); }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.signout-btn{ font-family:'Barlow Condensed',sans-serif;font-size:.6rem;letter-spacing:2px;text-transform:uppercase;background:transparent;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:4px 11px;color:var(--dim);cursor:pointer; }
+
+/* TABS (for Manish) */
+.tabs{ display:flex;background:rgba(0,0,0,.2);border-bottom:1px solid var(--border);padding:0 14px; }
+.tab{ font-family:'Barlow Condensed',sans-serif;font-size:.65rem;letter-spacing:3px;text-transform:uppercase;padding:12px 16px;cursor:pointer;color:var(--dim);border-bottom:2px solid transparent;transition:all .2s; }
+.tab.active{ color:var(--gold);border-bottom-color:var(--gold); }
+
+/* BODY */
+.body{ padding:16px 14px 100px;max-width:480px;margin:0 auto; }
+.section-lbl{ font-family:'Barlow Condensed',sans-serif;font-size:.58rem;letter-spacing:4px;text-transform:uppercase;color:var(--gold);margin:24px 0 9px;padding-bottom:5px;border-bottom:1px solid var(--border); }
+
+/* ROLE BANNER */
+.role-banner{ background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:11px; }
+.rb-avatar{ width:34px;height:34px;border-radius:50%;background:var(--mid);border:1.5px solid rgba(201,168,76,.3);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:.8rem;font-weight:700;color:var(--gold-l);flex-shrink:0; }
+.rb-name{ font-family:'Barlow Condensed',sans-serif;font-size:.9rem;font-weight:700; }
+.rb-role{ font-size:.57rem;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-top:2px; }
+.perm-tag{ display:inline-block;padding:2px 7px;border-radius:20px;font-size:.52rem;letter-spacing:1.5px;text-transform:uppercase;margin:4px 3px 0 0; }
+.perm-tag.order   { background:rgba(74,103,65,.18);color:var(--green-l);border:1px solid rgba(74,103,65,.3); }
+.perm-tag.delivery{ background:rgba(44,95,138,.18);color:#6EB5F5;border:1px solid rgba(44,95,138,.3); }
+.perm-tag.win     { background:rgba(201,168,76,.12);color:var(--gold);border:1px solid rgba(201,168,76,.25); }
+
+/* QUICK ROW */
+.quick-row{ display:grid;gap:9px;margin-bottom:8px; }
+.qbtn{ border:none;border-radius:9px;padding:15px 8px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;transition:transform .15s,opacity .15s;font-family:'Barlow Condensed',sans-serif;-webkit-user-select:none;background:var(--surface); }
+.qbtn:active{transform:scale(.94);opacity:.85;}
+.qbtn-icon{font-size:1.9rem;line-height:1;}
+.qbtn-label{font-size:.68rem;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;}
+.qbtn-sub{font-size:.55rem;opacity:.6;font-family:'Barlow',sans-serif;}
+.qbtn.order   {border:1px solid rgba(74,103,65,.35);color:var(--green-l);}
+.qbtn.delivery{border:1px solid rgba(44,95,138,.35);color:#6EB5F5;}
+.qbtn.win     {border:1px solid rgba(201,168,76,.3);color:var(--gold);}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px;margin-bottom:12px;}
+.field{margin-bottom:11px;}
+.field:last-child{margin-bottom:0;}
+.field label{display:block;font-family:'Barlow Condensed',sans-serif;font-size:.58rem;letter-spacing:3px;text-transform:uppercase;color:var(--dim);margin-bottom:5px;}
+.field input,.field select{width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:10px 12px;color:var(--cream);font-family:'Barlow',sans-serif;font-size:1rem;outline:none;transition:border-color .2s;-webkit-appearance:none;}
+.field input:focus,.field select:focus{border-color:var(--gold);}
+.field input::placeholder{color:rgba(245,239,224,.22);}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+
+/* TRIGGER TYPE PILLS */
+.pills{display:grid;gap:8px;}
+.pill{border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 6px;text-align:center;cursor:pointer;transition:all .18s;font-family:'Barlow Condensed',sans-serif;font-size:.7rem;letter-spacing:1px;text-transform:uppercase;color:var(--dim);}
+.pill.sel-order   {border-color:var(--green-l);background:rgba(74,103,65,.18);color:var(--green-l);}
+.pill.sel-delivery{border-color:#6EB5F5;background:rgba(44,95,138,.18);color:#6EB5F5;}
+.pill.sel-win     {border-color:var(--gold);background:rgba(201,168,76,.12);color:var(--gold);}
+
+/* TIER BADGE */
+.tier-badge-row{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px;}
+.tier-badge{padding:8px;border-radius:8px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;border:1px solid transparent;opacity:.4;transition:opacity .2s;}
+.tier-badge.active{opacity:1;}
+.tb-spark  {color:var(--spark);border-color:rgba(126,168,200,.35);background:rgba(126,168,200,.08);}
+.tb-done   {color:var(--done); border-color:rgba(192,123,62,.35); background:rgba(192,123,62,.08);}
+.tb-bomb   {color:var(--bomb); border-color:rgba(201,168,76,.35); background:rgba(201,168,76,.08);}
+.tb-super  {color:var(--super);border-color:rgba(232,200,120,.35);background:rgba(232,200,120,.08);}
+.tier-hint {font-size:.6rem;color:var(--dim);margin-top:5px;}
+
+/* TEAM FILTER */
+.team-filter{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
+.tf-pill{border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:4px 10px;font-family:'Barlow Condensed',sans-serif;font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);cursor:pointer;transition:all .15s;}
+.tf-pill.active{border-color:var(--gold);background:rgba(201,168,76,.12);color:var(--gold);}
+/* TEAM GRID */
+.team-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.team-card{background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:10px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:all .18s;}
+.team-card.active{border-color:var(--gold);background:rgba(201,168,76,.09);}
+.tm-av{width:30px;height:30px;border-radius:50%;background:var(--mid);border:1.5px solid rgba(201,168,76,.2);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:.68rem;font-weight:700;color:var(--gold-l);flex-shrink:0;}
+.tm-name{font-family:'Barlow Condensed',sans-serif;font-size:.78rem;font-weight:600;line-height:1.2;}
+.tm-sub{font-size:.55rem;color:var(--dim);margin-top:1px;}
+
+/* FIRE BTN */
+.fire-btn{width:100%;border:none;border-radius:11px;padding:15px;font-family:'Barlow Condensed',sans-serif;font-size:1rem;font-weight:800;letter-spacing:3px;text-transform:uppercase;cursor:pointer;transition:transform .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;}
+.fire-btn:active{transform:scale(.97);}
+.fire-btn.order   {background:var(--green);color:white;}
+.fire-btn.delivery{background:#2C5F8A;color:white;}
+.fire-btn.win     {background:var(--gold);color:var(--forest);}
+
+/* LEADERBOARD EDITOR */
+.lb-team-editor{display:flex;flex-direction:column;gap:8px;}
+.lb-team-row{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;}
+.lb-team-name{font-family:'Barlow Condensed',sans-serif;font-size:.88rem;font-weight:700;margin-bottom:8px;color:var(--gold-l);}
+.lb-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.lb-field label{display:block;font-family:'Barlow Condensed',sans-serif;font-size:.5rem;letter-spacing:3px;text-transform:uppercase;color:var(--dim);margin-bottom:4px;}
+.lb-field input{width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:var(--cream);font-family:'Barlow',sans-serif;font-size:.9rem;outline:none;text-align:center;}
+.lb-field input:focus{border-color:var(--gold);}
+.week-field{margin-bottom:12px;}
+.week-field label{display:block;font-family:'Barlow Condensed',sans-serif;font-size:.58rem;letter-spacing:3px;text-transform:uppercase;color:var(--dim);margin-bottom:5px;}
+.week-field input{width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:9px 12px;color:var(--cream);font-family:'Barlow',sans-serif;font-size:1rem;outline:none;}
+.week-field input:focus{border-color:var(--gold);}
+.lb-save-btn{width:100%;border:none;border-radius:11px;padding:15px;font-family:'Barlow Condensed',sans-serif;font-size:1rem;font-weight:800;letter-spacing:3px;text-transform:uppercase;cursor:pointer;background:var(--gold);color:var(--forest);margin-top:14px;transition:transform .15s;}
+.lb-save-btn:active{transform:scale(.97);}
+.lb-last-update{font-size:.6rem;color:var(--dim);text-align:center;margin-top:8px;}
+
+/* HISTORY */
+.hist-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);}
+.hdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.hdot.order{background:var(--green-l);}
+.hdot.delivery{background:#6EB5F5;}
+.hdot.win{background:var(--gold);}
+.hinfo{flex:1;min-width:0;}
+.hname{font-family:'Barlow Condensed',sans-serif;font-size:.85rem;font-weight:600;}
+.hsub{font-size:.58rem;color:var(--dim);margin-top:1px;}
+.hval{font-family:'Barlow Condensed',sans-serif;font-size:.92rem;font-weight:700;color:var(--gold-l);}
+.htime{font-size:.55rem;color:var(--dim);flex-shrink:0;}
+.empty{text-align:center;padding:22px;color:var(--dim);font-size:.82rem;}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:12px 20px;font-family:'Barlow Condensed',sans-serif;font-size:.85rem;letter-spacing:1px;box-shadow:0 8px 32px rgba(0,0,0,.5);transition:transform .3s cubic-bezier(.34,1.56,.64,1);z-index:100;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+.toast.ok{border-color:#4CAF50;color:var(--green-l);}
+.toast.err{border-color:var(--red);color:#e88;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-logo">Wonder<span>woods</span></div>
+  <div class="login-sub">Sales Admin · Who are you?</div>
+  <div class="login-title">Select your profile</div>
+  <div class="user-cards" id="user-cards"></div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+  <div class="header">
+    <div class="hlogo">WW <span>Admin</span></div>
+    <div class="hright">
+      <div class="conn-badge"><div class="dot" id="dot"></div><span id="clbl">Offline</span></div>
+      <button class="signout-btn" onclick="signOut()">← Sign out</button>
+    </div>
+  </div>
+
+  <!-- Tabs (only shown if user has leaderboard access) -->
+  <div class="tabs" id="tabs" style="display:none">
+    <div class="tab active" id="tab-trigger" onclick="switchTab('trigger')">🎯 Trigger</div>
+    <div class="tab" id="tab-lb" onclick="switchTab('lb')">🏆 Leaderboard</div>
+    <div class="tab" id="tab-hist" onclick="switchTab('hist')">📋 History</div>
+  </div>
+
+  <!-- TRIGGER TAB -->
+  <div id="pane-trigger" class="body">
+    <div class="role-banner" id="role-banner"></div>
+
+    <div class="section-lbl">Quick Fire</div>
+    <div class="quick-row" id="quick-row"></div>
+
+    <div class="section-lbl">Custom Event</div>
+    <div class="card">
+      <div class="field">
+        <label>Trigger Type</label>
+        <div class="pills" id="pills"></div>
+      </div>
+      <div class="field">
+        <label>Value &amp; Tier (auto-detects)</label>
+        <input type="text" id="f-amount" placeholder="e.g. 75000 or ₹7.5L" autocomplete="off" oninput="onAmountChange()">
+        <div class="tier-badge-row">
+          <div class="tier-badge tb-spark" id="tb-spark">⚡ SPARK<br><span style="font-size:.5rem;font-weight:400">₹0–1L</span></div>
+          <div class="tier-badge tb-done"  id="tb-done" >🔥 DEAL DONE<br><span style="font-size:.5rem;font-weight:400">₹1–5L</span></div>
+          <div class="tier-badge tb-bomb"  id="tb-bomb" >💥 DEAL BOMB<br><span style="font-size:.5rem;font-weight:400">₹5–10L</span></div>
+          <div class="tier-badge tb-super" id="tb-super">🚀 SUPER DEAL<br><span style="font-size:.5rem;font-weight:400">₹10L+</span></div>
+        </div>
+        <div class="tier-hint" id="tier-hint">Enter amount above to see tier</div>
+      </div>
+      <div class="field">
+        <label>Salesperson</label>
+        <div class="team-filter" id="team-filter"></div>
+        <div class="team-grid" id="team-grid"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Product Name</label><input type="text" id="f-product" placeholder="e.g. Palazzo Oak" autocomplete="off"></div>
+        <div class="field"><label>Client Name</label><input type="text" id="f-client" placeholder="e.g. Emaar Hills" autocomplete="off"></div>
+      </div>
+      <div class="field">
+        <label>Location</label>
+        <input type="text" id="f-location" placeholder="e.g. Gurugram" autocomplete="off">
+      </div>
+      <button class="fire-btn order" id="fire-btn" onclick="fireCustom()">📦 &nbsp; FIRE ON SCREEN</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD TAB (Manish only) -->
+  <div id="pane-lb" class="body" style="display:none">
+    <div class="section-lbl">Update Leaderboard</div>
+    <div class="card">
+      <div class="week-field">
+        <label>Week Ending (update every Monday)</label>
+        <input type="text" id="lb-week-input" placeholder="e.g. 25 Oct 2026">
+      </div>
+      <div class="lb-team-editor" id="lb-editor"></div>
+      <button class="lb-save-btn" onclick="saveLeaderboard()">🏆 &nbsp; PUSH TO SCREEN</button>
+      <div class="lb-last-update" id="lb-last-update"></div>
+    </div>
+    <div class="section-lbl">Current Standings</div>
+    <div class="card" id="lb-current"><div class="empty">Fetching current data…</div></div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div id="pane-hist" class="body" style="display:none">
+    <div class="section-lbl">Today's Triggers</div>
+    <div class="card" id="hist-wrap"><div class="empty">No triggers fired yet today</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const RELAY_URL = 'https://gamification-ww.onrender.com';
+const API_KEY   = 'ww-secret-2024';
+
+/* ── USERS ───────────────────────────────────────────────────────── */
+// perms: array of trigger types allowed
+// lb: can edit leaderboard
+const USERS = [
+  { id:'surmeet',  name:'Surmeet',  init:'SU', role:'Assistant',       perms:['order','delivery','win'], lb:false },
+  { id:'manish',   name:'Manish',   init:'MA', role:'Accounts & Ops',  perms:['order','delivery'],       lb:true  },
+  { id:'miraj',    name:'Miraj',    init:'MI', role:'Billing',         perms:['order','delivery'],       lb:false },
+  { id:'sambhav',  name:'Sambhav',  init:'SK', role:'Founder & MD',    perms:['order','delivery','win'], lb:true  },
+];
+
+/* ── TEAM ────────────────────────────────────────────────────────── */
+// Full sales team from SALES_TEAM_with_Bitrix_ID.xlsx
+// Grouped by team for the trigger selector
+const TEAM = [
+  // B2C — Geet's team
+  { name:'Geet Rawat',         init:'GR', role:'B2C Manager',        bitrixId:'593'  },
+  { name:'Pooja',              init:'PO', role:'B2C',                bitrixId:'2901' },
+  { name:'Ritu Dhuper',        init:'RD', role:'B2C',                bitrixId:'2827' },
+  { name:'Rishabh',            init:'RI', role:'B2C',                bitrixId:'2953' },
+  { name:'Prashant',           init:'PR', role:'B2C',                bitrixId:'2895' },
+  // B2B West & Central — Vishal Poddar's team
+  { name:'Vishal Poddar',      init:'VP', role:'West & Central Mgr', bitrixId:'137'  },
+  { name:'Somender',           init:'SO', role:'West & Central',     bitrixId:'2891' },
+  { name:'Kishan',             init:'KI', role:'West & Central',     bitrixId:'2513' },
+  { name:'Umesh',              init:'UM', role:'West & Central',     bitrixId:'2867' },
+  { name:'Shubham',            init:'SH', role:'West & Central',     bitrixId:'697'  },
+  { name:'Priyanshi',          init:'PI', role:'West & Central',     bitrixId:'2527' },
+  // B2B Delhi — Abhishek Wilson's team
+  { name:'Abhishek Wilson',    init:'AW', role:'Delhi B2B Manager',  bitrixId:'2501' },
+  { name:'Ashwani Kumar',      init:'AK', role:'Delhi B2B',          bitrixId:'537'  },
+  { name:'Janak',              init:'JA', role:'Delhi B2B',          bitrixId:'2499' },
+  { name:'Sooraj',             init:'SR', role:'Delhi B2B',          bitrixId:'2851' },
+  { name:'Aarif',              init:'AR', role:'Delhi B2B',          bitrixId:'2815' },
+  // B2B North & South — Samarth's team
+  { name:'Samarth Khandelwal', init:'SK', role:'North & South Mgr',  bitrixId:'15'   },
+  { name:'Mansi',              init:'MN', role:'North & South',      bitrixId:'2943' },
+  { name:'Hemant',             init:'HE', role:'North & South',      bitrixId:'2037' },
+  { name:'Waseem',             init:'WA', role:'North & South',      bitrixId:'2857' },
+  { name:'Abhishek Sharma',    init:'AS', role:'North & South',      bitrixId:'741'  },
+  { name:'Ayush',              init:'AY', role:'North & South',      bitrixId:'2899' },
+  // Perscape — Anurag's team
+  { name:'Anurag Khandelwal',  init:'AK', role:'Perscape Manager',   bitrixId:'487'  },
+  { name:'Divya',              init:'DI', role:'Perscape Chandigarh',bitrixId:'2881' },
+  { name:'Krishna',            init:'KR', role:'Perscape Bangalore', bitrixId:'2947' },
+  { name:'Sampada',            init:'SA', role:'Perscape Delhi',     bitrixId:'1287' },
+  { name:'Vishal Choudhary',   init:'VC', role:'Perscape Delhi',     bitrixId:'2841' },
+  { name:'Prachi',             init:'PC', role:'Perscape Hyderabad', bitrixId:'2883' },
+  { name:'Rahul',              init:'RA', role:'Perscape Guwahati',  bitrixId:'2893' },
+];
+
+/* ── TYPE CONFIG ─────────────────────────────────────────────────── */
+const TYPE_CFG = {
+  order:    { label:'Order Confirmed', icon:'📦', subtext:'Advance Received · Order Confirmed', cls:'order',    fireCls:'order'   },
+  delivery: { label:'Delivery',        icon:'🚚', subtext:'Material Dispatched',                cls:'delivery', fireCls:'delivery'},
+  win:      { label:'Deal Won',        icon:'🏆', subtext:'Deal Closed · CRM Updated',         cls:'win',      fireCls:'win'     },
+};
+
+const HEADLINES = {
+  order:    { spark:'ORDER IN!',      done:'ORDER LOCKED!',  bomb:'DEAL BOMB! 💥',  super:'SUPER DEAL! 🚀' },
+  delivery: { spark:'OUT THE DOOR!',  done:'DELIVERED!',     bomb:'BOMB AWAY! 💥',  super:'MEGA DISPATCH! 🚀' },
+  win:      { spark:'WIN!',           done:'DEAL WON!',      bomb:'DEAL WON! 🏆',   super:'MASSIVE WIN! 🚀' },
+};
+
+/* ── TIER ────────────────────────────────────────────────────────── */
+const TIERS = [
+  { key:'spark', name:'SPARK',     icon:'⚡', cls:'tier-spark', min:0,       max:100000   },
+  { key:'done',  name:'DEAL DONE', icon:'🔥', cls:'tier-done',  min:100000,  max:500000   },
+  { key:'bomb',  name:'DEAL BOMB', icon:'💥', cls:'tier-bomb',  min:500000,  max:1000000  },
+  { key:'super', name:'SUPER DEAL',icon:'🚀', cls:'tier-super', min:1000000, max:Infinity },
+];
+
+function parseRaw(s) {
+  s = String(s||'').replace(/₹|,/g,'').trim();
+  if (/cr/i.test(s)) return parseFloat(s)*10000000;
+  if (/l/i.test(s))  return parseFloat(s)*100000;
+  if (/k/i.test(s))  return parseFloat(s)*1000;
+  return parseFloat(s)||0;
+}
+function fmtAmt(v) {
+  if (v>=10000000) return '₹'+(v/10000000).toFixed(1)+'Cr';
+  if (v>=100000)   return '₹'+(v/100000).toFixed(1)+'L';
+  if (v>=1000)     return '₹'+(v/1000).toFixed(0)+'K';
+  return '₹'+Math.round(v);
+}
+function getTier(raw) {
+  return TIERS.find(t=>raw>=t.min&&raw<t.max) || TIERS[0];
+}
+
+/* ── STATE ───────────────────────────────────────────────────────── */
+// Team groups for filter pills
+const TEAM_GROUPS = [
+  { key:'all',     label:'All'           },
+  { key:'b2c',     label:'B2C'           },
+  { key:'west',    label:'West & Central'},
+  { key:'delhi',   label:'Delhi B2B'     },
+  { key:'north',   label:'North & South' },
+  { key:'perscape',label:'Perscape'      },
+];
+const TEAM_GROUP_MAP = {
+  'Geet Rawat':'b2c','Pooja':'b2c','Ritu Dhuper':'b2c','Rishabh':'b2c','Prashant':'b2c',
+  'Vishal Poddar':'west','Somender':'west','Kishan':'west','Umesh':'west','Shubham':'west','Priyanshi':'west',
+  'Abhishek Wilson':'delhi','Ashwani Kumar':'delhi','Janak':'delhi','Sooraj':'delhi','Aarif':'delhi',
+  'Samarth Khandelwal':'north','Mansi':'north','Hemant':'north','Waseem':'north','Abhishek Sharma':'north','Ayush':'north',
+  'Anurag Khandelwal':'perscape','Divya':'perscape','Krishna':'perscape','Sampada':'perscape','Vishal Choudhary':'perscape','Prachi':'perscape','Rahul':'perscape',
+};
+
+let currentUser    = null;
+let selectedType   = 'order';
+let selectedPerson = TEAM[0].name;
+let selectedGroup  = 'all';
+let history        = JSON.parse(sessionStorage.getItem('ww_hist')||'[]');
+let currentTab     = 'trigger';
+let currentTier    = TIERS[0];
+
+/* ── LOGIN ───────────────────────────────────────────────────────── */
+function renderLogin() {
+  document.getElementById('user-cards').innerHTML = USERS.map(u=>`
+    <div class="user-card ${u.perms.length>2?'admin-card':''}" onclick="login('${u.id}')">
+      <div class="uc-avatar">${u.init}</div>
+      <div class="uc-name">${u.name}</div>
+      <div class="uc-role">${u.role}</div>
+      <div class="uc-perm ${u.perms.length>2?'all':'ord'}">${u.perms.length>2?'Full access':'Orders & Delivery'}</div>
+    </div>`).join('');
+}
+
+function login(uid) {
+  currentUser = USERS.find(u=>u.id===uid);
+  if (!currentUser) return;
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  selectedType = currentUser.perms[0];
+
+  // Show tabs only if leaderboard access
+  if (currentUser.lb) document.getElementById('tabs').style.display='flex';
+
+  renderRoleBanner();
+  renderQuickRow();
+  renderPills();
+  renderTeamFilter();
+  renderTeamGrid();
+  renderHistory();
+  renderLbEditor();
+  loadCurrentLb();
+  updateFireBtn();
+  connectWS();
+}
+
+function signOut() {
+  currentUser=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  if(ws) ws.close();
+}
+
+/* ── TABS ────────────────────────────────────────────────────────── */
+function switchTab(tab) {
+  currentTab=tab;
+  ['trigger','lb','hist'].forEach(t=>{
+    document.getElementById('pane-'+t).style.display=t===tab?'block':'none';
+    document.getElementById('tab-'+t)?.classList.toggle('active',t===tab);
+  });
+  if(tab==='hist') renderHistory();
+}
+
+/* ── ROLE BANNER ─────────────────────────────────────────────────── */
+function renderRoleBanner() {
+  const u=currentUser;
+  const tags=u.perms.map(p=>`<span class="perm-tag ${p}">${TYPE_CFG[p]?.icon||''} ${TYPE_CFG[p]?.label||p}</span>`).join('');
+  document.getElementById('role-banner').innerHTML=`
+    <div class="rb-avatar">${u.init}</div>
+    <div><div class="rb-name">${u.name}</div><div class="rb-role">${u.role}</div><div style="margin-top:4px">${tags}</div></div>`;
+}
+
+/* ── QUICK ROW ───────────────────────────────────────────────────── */
+function renderQuickRow() {
+  const perms=currentUser.perms;
+  const qr=document.getElementById('quick-row');
+  qr.style.gridTemplateColumns=perms.length===1?'1fr':perms.length===2?'1fr 1fr':'1fr 1fr 1fr';
+  qr.innerHTML=perms.map(p=>`
+    <button class="qbtn ${TYPE_CFG[p].cls}" onclick="quickFire('${p}')">
+      <span class="qbtn-icon">${TYPE_CFG[p].icon}</span>
+      <span class="qbtn-label">${TYPE_CFG[p].label}</span>
+      <span class="qbtn-sub">with selected person</span>
+    </button>`).join('');
+}
+
+/* ── PILLS ───────────────────────────────────────────────────────── */
+function renderPills() {
+  const perms=currentUser.perms;
+  const pills=document.getElementById('pills');
+  pills.style.gridTemplateColumns=perms.length===1?'1fr':perms.length===2?'1fr 1fr':'1fr 1fr 1fr';
+  pills.innerHTML=perms.map(p=>`
+    <div class="pill ${selectedType===p?'sel-'+p:''}" onclick="selectType('${p}')">
+      ${TYPE_CFG[p].icon} ${TYPE_CFG[p].label}
+    </div>`).join('');
+}
+function selectType(t) { selectedType=t; renderPills(); updateFireBtn(); }
+
+/* ── AMOUNT & TIER DETECTION ─────────────────────────────────────── */
+function onAmountChange() {
+  const raw=parseRaw(document.getElementById('f-amount').value);
+  currentTier=getTier(raw);
+  TIERS.forEach(t=>{
+    document.getElementById('tb-'+t.key).classList.toggle('active',t.key===currentTier.key);
+  });
+  document.getElementById('tier-hint').textContent=raw>0
+    ? `${currentTier.icon} ${currentTier.name} — ${fmtAmt(raw)}`
+    : 'Enter amount above to see tier';
+  updateFireBtn();
+}
+
+/* ── TEAM GRID ───────────────────────────────────────────────────── */
+function renderTeamFilter() {
+  document.getElementById('team-filter').innerHTML=TEAM_GROUPS.map(g=>`
+    <div class="tf-pill ${selectedGroup===g.key?'active':''}" onclick="selectGroup('${g.key}')">${g.label}</div>`).join('');
+}
+function selectGroup(g) {
+  selectedGroup=g;
+  renderTeamFilter();
+  renderTeamGrid();
+}
+function renderTeamGrid() {
+  const visible = selectedGroup==='all' ? TEAM : TEAM.filter(m=>(TEAM_GROUP_MAP[m.name]||'')===selectedGroup);
+  document.getElementById('team-grid').innerHTML=visible.map(m=>`
+    <div class="team-card ${m.name===selectedPerson?'active':''}" onclick="selectPerson('${m.name}')">
+      <div class="tm-av">${m.init}</div>
+      <div><div class="tm-name">${m.name.split(' ')[0]}<br>${m.name.split(' ').slice(1).join(' ')}</div><div class="tm-sub">${m.role}</div></div>
+    </div>`).join('');
+}
+function selectPerson(n){ selectedPerson=n; renderTeamGrid(); }
+
+/* ── FIRE BUTTON ─────────────────────────────────────────────────── */
+function updateFireBtn() {
+  const b=document.getElementById('fire-btn');
+  const cfg=TYPE_CFG[selectedType];
+  b.className='fire-btn '+cfg.fireCls;
+  b.innerHTML=`${cfg.icon} &nbsp; FIRE ON SCREEN`;
+}
+
+/* ── FIRE ────────────────────────────────────────────────────────── */
+function quickFire(type) {
+  fire(type, selectedPerson, 'Product', 'Client', '', '₹0');
+}
+function fireCustom() {
+  const amount  = document.getElementById('f-amount').value.trim();
+  const product = document.getElementById('f-product').value.trim()||'Product';
+  const client  = document.getElementById('f-client').value.trim()||'Client';
+  const location= document.getElementById('f-location').value.trim()||'';
+  if (!amount) { showToast('Enter an amount','err'); return; }
+  fire(selectedType, selectedPerson, product, client, location, amount);
+}
+
+async function fire(triggerType, person, product, client, location, amountRaw) {
+  const raw=parseRaw(amountRaw);
+  // Minimum threshold: ₹25,000 — no celebration below this
+  if (raw > 0 && raw < 25000) {
+    showToast('⚠️ Below ₹25K minimum — celebration not fired','err');
+    return;
+  }
+  const tier=getTier(raw);
+  const headline=HEADLINES[triggerType][tier.key];
+  const cfg=TYPE_CFG[triggerType];
+  const payload={ triggerType, tier, headline, subtext:cfg.subtext, person, product, client, location, amount:fmtAmt(raw) };
+
+  try {
+    const r=await fetch(`${RELAY_URL}/trigger?key=${API_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!r.ok) throw new Error();
+    const d=await r.json();
+    showToast(`${tier.icon} ${tier.name} fired on ${d.screens} screen${d.screens!==1?'s':''}!`,'ok');
+    addHistory(triggerType,person,product,client,location,fmtAmt(raw));
+    document.getElementById('f-amount').value='';
+    document.getElementById('f-product').value='';
+    document.getElementById('f-client').value='';
+    document.getElementById('f-location').value='';
+    onAmountChange();
+  } catch {
+    if(ws&&ws.readyState===1){ ws.send(JSON.stringify({type:'celebration',...payload})); showToast('Sent via WebSocket','ok'); addHistory(triggerType,person,product,client,location,fmtAmt(raw)); }
+    else showToast('Server unreachable','err');
+  }
+}
+
+/* ── LEADERBOARD EDITOR ──────────────────────────────────────────── */
+function renderLbEditor() {
+  document.getElementById('lb-editor').innerHTML=TEAM.map(m=>`
+    <div class="lb-team-row">
+      <div class="lb-team-name">${m.name} <span style="color:var(--dim);font-size:.6rem;font-weight:400">${m.role}</span></div>
+      <div class="lb-fields">
+        <div class="lb-field"><label>Revenue (₹)</label><input type="number" id="lb-rev-${m.init}" placeholder="0" min="0"></div>
+        <div class="lb-field"><label>Wins</label><input type="number" id="lb-wins-${m.init}" placeholder="0" min="0"></div>
+        <div class="lb-field"><label>Orders</label><input type="number" id="lb-orders-${m.init}" placeholder="0" min="0"></div>
+      </div>
+    </div>`).join('');
+}
+
+async function loadCurrentLb() {
+  try {
+    const d=await fetch(RELAY_URL+'/leaderboard').then(r=>r.json());
+    if (d?.updatedAt) document.getElementById('lb-last-update').textContent='Last pushed: '+new Date(d.updatedAt).toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+' by '+(d.updatedBy||'Manish');
+    if (d?.teams?.length) {
+      const sorted=[...d.teams].sort((a,b)=>(b.revenue||0)-(a.revenue||0));
+      document.getElementById('lb-current').innerHTML=sorted.map((t,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;width:22px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+          <div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-size:.85rem;font-weight:700">${t.name.split(' ')[0]}</div><div style="font-size:.55rem;color:var(--dim)">${t.role||''}</div></div>
+          <div style="text-align:right"><div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;font-weight:800;color:var(--gold-l)">${t.revenue?fmtAmt(t.revenue):'—'}</div><div style="font-size:.52rem;color:var(--dim)">${t.wins||0}W · ${t.orders||0}O</div></div>
+        </div>`).join('');
+      // Pre-fill editor
+      if (d.weekLabel) document.getElementById('lb-week-input').value=d.weekLabel;
+      d.teams.forEach(t=>{
+        const m=TEAM.find(x=>x.name===t.name);
+        if(!m) return;
+        document.getElementById('lb-rev-'+m.init).value=t.revenue||'';
+        document.getElementById('lb-wins-'+m.init).value=t.wins||'';
+        document.getElementById('lb-orders-'+m.init).value=t.orders||'';
+      });
+    } else {
+      document.getElementById('lb-current').innerHTML='<div class="empty">No data yet</div>';
+    }
+  } catch(e){ document.getElementById('lb-current').innerHTML='<div class="empty">Could not fetch current standings</div>'; }
+}
+
+async function saveLeaderboard() {
+  const weekLabel=document.getElementById('lb-week-input').value.trim();
+  if (!weekLabel) { showToast('Enter week ending date','err'); return; }
+  const teams=TEAM.map(m=>({
+    name:   m.name,
+    role:   m.role,
+    revenue:parseInt(document.getElementById('lb-rev-'+m.init).value)||0,
+    wins:   parseInt(document.getElementById('lb-wins-'+m.init).value)||0,
+    orders: parseInt(document.getElementById('lb-orders-'+m.init).value)||0,
+  }));
+  try {
+    const r=await fetch(`${RELAY_URL}/leaderboard?key=${API_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teams,weekLabel,updatedBy:currentUser.name})});
+    if(!r.ok) throw new Error();
+    showToast('🏆 Leaderboard pushed to screen!','ok');
+    loadCurrentLb();
+  } catch { showToast('Could not save — check connection','err'); }
+}
+
+/* ── HISTORY ─────────────────────────────────────────────────────── */
+function addHistory(type,person,product,client,location,amount) {
+  const time=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+  history.unshift({type,person,product,client,location,amount,time});
+  if(history.length>30) history.pop();
+  sessionStorage.setItem('ww_hist',JSON.stringify(history));
+  if(currentTab==='hist') renderHistory();
+}
+function renderHistory() {
+  const w=document.getElementById('hist-wrap');
+  if(!history.length){ w.innerHTML='<div class="empty">No triggers fired yet</div>'; return; }
+  w.innerHTML=history.map(h=>`
+    <div class="hist-item">
+      <div class="hdot ${h.type}"></div>
+      <div class="hinfo"><div class="hname">${h.person} · ${h.product||'—'}</div><div class="hsub">${h.client}${h.location?' · '+h.location:''} · ${TYPE_CFG[h.type]?.label||h.type}</div></div>
+      <div class="hval">${h.amount}</div>
+      <div class="htime">${h.time}</div>
+    </div>`).join('');
+}
+
+/* ── TOAST ───────────────────────────────────────────────────────── */
+let tTimer;
+function showToast(msg,cls='ok') {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${cls} show`;
+  clearTimeout(tTimer); tTimer=setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+/* ── WEBSOCKET ───────────────────────────────────────────────────── */
+let ws;
+function connectWS() {
+  if(RELAY_URL.includes('YOUR-APP')) return;
+  try{ ws=new WebSocket(RELAY_URL.replace('https','wss').replace('http','ws')); }catch{ setTimeout(connectWS,5000);return; }
+  ws.onopen =()=>{ document.getElementById('dot').className='dot live'; document.getElementById('clbl').textContent='LIVE'; };
+  ws.onclose=()=>{ document.getElementById('dot').className='dot err';  document.getElementById('clbl').textContent='OFFLINE'; setTimeout(connectWS,5000); };
+  ws.onerror=()=>ws.close();
+}
+
+/* ── INIT ────────────────────────────────────────────────────────── */
+renderLogin();
+</script>
+</body>
+</html>
