@@ -476,15 +476,20 @@ function istDateStr() {
   return new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-// Product category for a deal: the UF_CRM_PRODUCT field (list IDs resolved to names), else pipeline name
-let productItems = null, pipelineNames = null;
+// Product category for a deal: the custom field labelled "Product Category" in the deal form
+// (found by its label, list IDs resolved to names), else UF_CRM_PRODUCT, else the pipeline name
+let productItems = null, pipelineNames = null, productField = 'UF_CRM_PRODUCT';
 async function loadDealMeta() {
   if (productItems && pipelineNames) return;
   try {
-    const f = await bitrixFetch('crm.deal.fields', {});
-    const fld = f?.result?.UF_CRM_PRODUCT;
+    const f = (await bitrixFetch('crm.deal.fields', {}))?.result || {};
+    const label = x => [x.formLabel, x.listLabel, x.filterLabel, x.title].filter(Boolean).join(' ');
+    const hit = Object.entries(f).find(([k, x]) => k.startsWith('UF_') && /product\s*categ/i.test(label(x)))
+             || Object.entries(f).find(([k, x]) => k.startsWith('UF_') && /categ/i.test(label(x)) && /product/i.test(label(x) + k));
+    if (hit) productField = hit[0];
+    console.log('[WATCH] Product category field:', productField);
     productItems = {};
-    (fld?.items || []).forEach(it => { productItems[String(it.ID)] = it.VALUE; });
+    (f[productField]?.items || []).forEach(it => { productItems[String(it.ID)] = it.VALUE; });
   } catch (e) { productItems = {}; }
   try {
     const c = await bitrixFetch('crm.dealcategory.list', {});
@@ -508,7 +513,7 @@ async function personName(id) {
 }
 
 function productCategory(d) {
-  let v = d.UF_CRM_PRODUCT;
+  let v = d[productField];
   if (Array.isArray(v)) v = v.map(x => (productItems && productItems[String(x)]) || x).filter(Boolean).join(', ');
   else if (v !== undefined && v !== null && v !== '' && productItems && productItems[String(v)]) v = productItems[String(v)];
   if (v && String(v).trim() && !/^\d+$/.test(String(v))) return String(v).trim();
@@ -524,7 +529,7 @@ async function checkDealEvents() {
     // NEW DEALS
     const created = await bitrixFetch('crm.deal.list', {
       'filter[>ID]': first ? 0 : lastDealId,
-      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','COMPANY_ID','CATEGORY_ID','DATE_CREATE','UF_CRM_PRODUCT'],
+      'select[]': ['*', 'UF_*'],   // all standard + custom fields (Product Category is a custom field)
       'order[ID]': first ? 'DESC' : 'ASC',
       'start': 0,
     });
