@@ -800,11 +800,11 @@ app.post('/trigger', requireUser, (req, res) => {
   addToToday({
     orders:     isOrder    ? 1 : 0,
     deliveries: isDelivery ? 1 : 0,
-    revenue:    isOrder    ? raw : 0,   // revenue counted on order, not delivery
+    revenue:    isDelivery ? raw : 0,   // value counted on DELIVERY only (an order is later delivered — avoids double counting)
     wins:       isWin      ? 1 : 0,
   });
   addToMonthly({
-    revenue: isOrder ? raw : 0,
+    revenue: isDelivery ? raw : 0,
     orders:  isOrder ? 1  : 0,
     wins:    isWin   ? 1  : 0,
   });
@@ -858,12 +858,12 @@ app.post('/activity/delete', requireUser, (req, res) => {
   if (a.dateKey === todayDateKey()) {
     todayStats.orders     = Math.max(0, todayStats.orders     - (isOrder ? 1 : 0));
     todayStats.deliveries = Math.max(0, todayStats.deliveries - (isDelivery ? 1 : 0));
-    todayStats.revenue    = Math.max(0, todayStats.revenue    - (isOrder ? a.raw : 0));
+    todayStats.revenue    = Math.max(0, todayStats.revenue    - (isDelivery ? a.raw : 0));
     todayStats.wins       = Math.max(0, todayStats.wins       - (isWin ? 1 : 0));
     sheetSaveState('today', () => todayStats);
   }
   if (a.monthKey === monthlyData.monthKey) {
-    monthlyData.totalRevenue = Math.max(0, monthlyData.totalRevenue - (isOrder ? a.raw : 0));
+    monthlyData.totalRevenue = Math.max(0, monthlyData.totalRevenue - (isDelivery ? a.raw : 0));
     monthlyData.totalOrders  = Math.max(0, monthlyData.totalOrders  - (isOrder ? 1 : 0));
     monthlyData.totalWins    = Math.max(0, monthlyData.totalWins    - (isWin ? 1 : 0));
     saveMonthly();
