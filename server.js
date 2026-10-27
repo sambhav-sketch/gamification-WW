@@ -148,6 +148,65 @@ function bitrixDate(dt) {
   return dt.toISOString().split('T')[0];
 }
 
+// ── GOOGLE SHEET STORAGE ──────────────────────────────────────────────────────
+// Render's free plan wipes local files on restart, so the leaderboard, monthly and
+// today's totals are kept in a Google Sheet (via an Apps Script web app).
+// Env vars on Render: SHEET_URL (the web app /exec link) and SHEET_KEY (shared secret).
+const SHEET_URL = process.env.SHEET_URL || '';
+const SHEET_KEY = process.env.SHEET_KEY || '';
+const sheetTimers = {};
+
+function sheetRequest(method, url, body, redirects = 4) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const data = body ? JSON.stringify(body) : null;
+    const req = https.request({ method, hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search,
+      headers: data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {} }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();   // Apps Script answers via a redirect that must be fetched with GET
+        return resolve(sheetRequest('GET', new URL(res.headers.location, url).toString(), null, redirects - 1));
+      }
+      let txt = ''; res.on('data', c => txt += c);
+      res.on('end', () => { try { resolve(JSON.parse(txt)); } catch (e) { reject(new Error('Sheet replied: ' + txt.slice(0, 120))); } });
+    });
+    req.on('error', reject);
+    req.setTimeout(20000, () => req.destroy(new Error('Sheet timeout')));
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+function sheetPost(action, name, value) {
+  if (!SHEET_URL || !SHEET_KEY) return Promise.resolve();
+  return sheetRequest('POST', SHEET_URL, { key: SHEET_KEY, action, name, value })
+    .then(r => { if (r && r.error) console.log('[SHEET]', action, r.error); })
+    .catch(e => console.log('[SHEET] write failed:', e.message));
+}
+
+// Coalesce rapid changes (e.g. several triggers in a row) into one write per item
+function sheetSaveState(name, valueFn) {
+  clearTimeout(sheetTimers[name]);
+  sheetTimers[name] = setTimeout(() => sheetPost('state', name, valueFn()), 2000);
+}
+
+async function sheetLoadState() {
+  if (!SHEET_URL || !SHEET_KEY) { console.log('[SHEET] Not configured — using local files only'); return; }
+  try {
+    const r = await sheetRequest('GET', `${SHEET_URL}?key=${encodeURIComponent(SHEET_KEY)}`);
+    if (!r || !r.ok) throw new Error((r && r.error) || 'bad reply');
+    const st = r.state || {};
+    if (st.leaderboard && Array.isArray(st.leaderboard.teams)) leaderboardData = st.leaderboard;
+    if (st.monthly && st.monthly.monthKey === currentMonthKey()) monthlyData = st.monthly;
+    if (st.today && st.today.dateKey === todayDateKey()) todayStats = st.today;
+    console.log('[SHEET] State restored from Google Sheet');
+    broadcast({ type: 'leaderboard', data: leaderboardData });
+    broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
+    broadcast({ type: 'today', data: todayStats });
+  } catch (e) {
+    console.log('[SHEET] Could not load state:', e.message);
+  }
+}
+
 // ── LEADERBOARD STORE ─────────────────────────────────────────────────────────
 let leaderboardData = {
   updatedBy:   '',
@@ -171,6 +230,8 @@ if (fs.existsSync(LEADERBOARD_FILE)) {
 }
 
 function saveLeaderboard() {
+  sheetSaveState('leaderboard', () => leaderboardData);
+  sheetPost('leaderboard', 'history', leaderboardData);
   try { fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboardData, null, 2)); }
   catch(e) { console.log('[LB] Could not save leaderboard:', e.message); }
 }
@@ -199,6 +260,7 @@ if (fs.existsSync(MONTHLY_FILE)) {
 }
 
 function saveMonthly() {
+  sheetSaveState('monthly', () => monthlyData);
   try { fs.writeFileSync(MONTHLY_FILE, JSON.stringify(monthlyData, null, 2)); }
   catch(e) { console.log('[MONTHLY] Could not save:', e.message); }
 }
@@ -245,6 +307,7 @@ function addToToday({ orders = 0, deliveries = 0, revenue = 0, wins = 0 }) {
   todayStats.deliveries += deliveries;
   todayStats.revenue    += revenue;
   todayStats.wins       += wins;
+  sheetSaveState('today', () => todayStats);
 }
 
 // Schedule midnight IST reset (also handled in addToToday, this just keeps it clean)
@@ -311,7 +374,7 @@ async function pollBitrix() {
     // Deals WON today (stage changed to WON)
     // Bitrix doesn't have a "won_date" filter natively; we filter by CLOSEDATE = today
     const won = await bitrixFetch('crm.deal.list', {
-      'filter[CLOSED]':         'Y',
+      'filter[STAGE_SEMANTIC_ID]': 'S',   // S = success (won); CLOSED=Y would also count lost deals
       'filter[>=CLOSEDATE]':    todayStr,
       'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','STAGE_ID','UF_CRM_PRODUCT'],
       'order[OPPORTUNITY]': 'DESC',
@@ -356,6 +419,164 @@ async function pollBitrix() {
 pollBitrix();
 setInterval(pollBitrix, BITRIX_POLL_INTERVAL);
 
+// ── LIVE DEAL WATCHER (deal created / deal won) ───────────────────────────────
+// Checks Bitrix every 60s (and instantly when Bitrix calls /bitrix/deal).
+// New deal = ID higher than the last one seen. Won deal = success stage, closed today.
+// On server start it only records what already exists, so nothing old is replayed.
+const WATCH_INTERVAL = 60 * 1000;
+let lastDealId   = null;          // highest deal ID seen
+const wonSeen    = new Set();     // won deal IDs already celebrated
+let watchBusy    = false;
+
+function istDateStr() {
+  return new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+async function checkDealEvents() {
+  if (!BITRIX_URL || watchBusy) return;
+  watchBusy = true;
+  try {
+    const first = lastDealId === null;
+
+    // NEW DEALS
+    const created = await bitrixFetch('crm.deal.list', {
+      'filter[>ID]': first ? 0 : lastDealId,
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','COMPANY_ID'],
+      'order[ID]': first ? 'DESC' : 'ASC',
+      'start': 0,
+    });
+    const newDeals = created?.result || [];
+    if (first) {
+      lastDealId = newDeals.length ? Math.max(...newDeals.map(d => +d.ID)) : 0;
+    } else {
+      for (const d of newDeals) {
+        lastDealId = Math.max(lastDealId, +d.ID);
+        const amount = parseFloat(d.OPPORTUNITY || 0);
+        const person = USER_MAP[d.ASSIGNED_BY_ID] || 'Sales Team';
+        console.log(`[WATCH] New deal #${d.ID} ${d.TITLE} ${amount} by ${person}`);
+        broadcast({
+          type: 'celebration', triggerType: 'deal', tier: getTier(amount),
+          headline: 'NEW DEAL!', subtext: 'Deal Created in CRM',
+          person, product: d.TITLE || 'New Deal', client: d.TITLE || '', location: '',
+          amount: amount ? formatAmount(amount) : '—', eventType: 'Deal Created',
+        });
+      }
+    }
+
+    // WON DEALS (closed today, success stage)
+    const won = await bitrixFetch('crm.deal.list', {
+      'filter[STAGE_SEMANTIC_ID]': 'S',
+      'filter[>=CLOSEDATE]': istDateStr(),
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID'],
+      'start': 0,
+    });
+    for (const d of (won?.result || [])) {
+      if (wonSeen.has(d.ID)) continue;
+      wonSeen.add(d.ID);
+      if (first) continue;
+      const amount = parseFloat(d.OPPORTUNITY || 0);
+      const person = USER_MAP[d.ASSIGNED_BY_ID] || 'Sales Team';
+      const tier   = getTier(amount);
+      console.log(`[WATCH] Deal won #${d.ID} ${d.TITLE} ${amount} by ${person}`);
+      addToToday({ wins: 1 });
+      addToMonthly({ wins: 1 });
+      broadcast({
+        type: 'celebration', triggerType: 'win', tier,
+        headline: tier.tier >= 3 ? 'MASSIVE WIN! 🏆' : 'DEAL WON!', subtext: 'Deal Closed · CRM Updated',
+        person, product: d.TITLE || 'Deal', client: d.TITLE || '', location: '',
+        amount: formatAmount(amount), eventType: 'Deal Won',
+      });
+      broadcast({ type: 'today', data: todayStats });
+      broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
+    }
+  } catch (e) {
+    console.log('[WATCH] error:', e.message);
+  } finally {
+    watchBusy = false;
+  }
+}
+checkDealEvents();
+setInterval(checkDealEvents, WATCH_INTERVAL);
+
+// ── SALESPERSON PHOTOS ────────────────────────────────────────────────────────
+// GET /photo/<name>  —  priority order:
+//   1. Google Drive folder "WW Sales Photos" (via the Sheet script)  e.g. "Geet Rawat.jpg"
+//      (a file in public/photos/ in the repo also counts as a folder photo)
+//   2. the person's Bitrix24 profile photo
+//   3. 404 → the display shows initials
+const PHOTO_DIR   = path.join(__dirname, 'public', 'photos');
+const photoCache  = new Map();   // name → { buf, type, at } | { none:true, at }
+const PHOTO_TTL      = 6 * 3600 * 1000;   // found photos: refresh every 6 h
+const PHOTO_MISS_TTL = 30 * 60 * 1000;    // not found: re-check every 30 min (new Drive uploads show up)
+
+async function drivePhoto(name) {
+  if (!SHEET_URL || !SHEET_KEY) return null;
+  try {
+    const r = await sheetRequest('GET', `${SHEET_URL}?key=${encodeURIComponent(SHEET_KEY)}&photo=${encodeURIComponent(name)}`);
+    if (r && r.ok && r.data) return { buf: Buffer.from(r.data, 'base64'), type: r.type || 'image/jpeg' };
+  } catch (e) { console.log('[PHOTO] Drive lookup failed:', e.message); }
+  return null;
+}
+
+function slug(name) { return String(name).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+
+function bitrixIdForName(name) {
+  const n = String(name).toLowerCase().trim();
+  const entries = Object.entries(USER_MAP);
+  let hit = entries.find(([, v]) => v.toLowerCase() === n);
+  if (!hit) hit = entries.find(([, v]) => v.toLowerCase().split(' ')[0] === n.split(' ')[0] && (v.split(' ').length === 1 || n.split(' ').length === 1));
+  return hit ? hit[0] : null;
+}
+
+function httpsGetBuffer(url, redirects = 3) {
+  return new Promise((resolve, reject) => {
+    https.get(url, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        return resolve(httpsGetBuffer(new URL(res.headers.location, url).toString(), redirects - 1));
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve({ buf: Buffer.concat(chunks), type: res.headers['content-type'] || 'image/jpeg' }));
+    }).on('error', reject).setTimeout(10000, function () { this.destroy(new Error('timeout')); });
+  });
+}
+
+app.get('/photo/:name', async (req, res) => {
+  const name = req.params.name;
+  for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
+    const f = path.join(PHOTO_DIR, slug(name) + '.' + ext);
+    if (fs.existsSync(f)) { res.set('Cache-Control', 'public, max-age=3600'); return res.sendFile(f); }
+  }
+  const cached = photoCache.get(name);
+  if (cached && Date.now() - cached.at < (cached.none ? PHOTO_MISS_TTL : PHOTO_TTL)) {
+    if (cached.none) return res.sendStatus(404);
+    res.set('Content-Type', cached.type).set('Cache-Control', 'public, max-age=3600');
+    return res.send(cached.buf);
+  }
+  const fromDrive = await drivePhoto(name);
+  if (fromDrive) {
+    photoCache.set(name, { ...fromDrive, at: Date.now() });
+    res.set('Content-Type', fromDrive.type).set('Cache-Control', 'public, max-age=3600');
+    return res.send(fromDrive.buf);
+  }
+  try {
+    const id = bitrixIdForName(name);
+    if (!id) throw new Error('no bitrix id');
+    const u = await bitrixFetch('user.get', { ID: id });
+    const photoUrl = u?.result?.[0]?.PERSONAL_PHOTO;
+    if (!photoUrl) throw new Error('no photo');
+    const img = await httpsGetBuffer(photoUrl);
+    photoCache.set(name, { ...img, at: Date.now() });
+    res.set('Content-Type', img.type).set('Cache-Control', 'public, max-age=3600');
+    return res.send(img.buf);
+  } catch (e) {
+    photoCache.set(name, { none: true, at: Date.now() });
+    return res.sendStatus(404);
+  }
+});
+
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 const wss = new WebSocket.Server({ noServer: true });
 let connectedScreens = 0;
@@ -379,10 +600,14 @@ wss.on('connection', (ws) => {
 });
 
 function broadcast(payload) {
+  if (payload.type === 'celebration') sheetPost('log', 'activity', payload);
   const msg = JSON.stringify(payload);
   console.log('[BROADCAST]', msg.substring(0, 200));
   wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
 }
+
+// Restore saved state from the Google Sheet once the server is up
+setTimeout(sheetLoadState, 500);
 
 // ── HTTP SERVER with WS upgrade ───────────────────────────────────────────────
 const server = app.listen(PORT, () => console.log(`[HTTP] Listening on port ${PORT}`));
@@ -421,59 +646,9 @@ app.get('/auth/me', requireUser, (req, res) => res.json(req.user));
 // ── BITRIX INBOUND WEBHOOK ────────────────────────────────────────────────────
 app.post('/bitrix/deal', (req, res) => {
   res.sendStatus(200);
-
-  const data   = req.body;
-  const event  = data.event || '';
-  const deal   = data.data?.FIELDS || {};
-  const stageId   = deal.STAGE_ID || '';
-  const amount    = parseFloat(deal.OPPORTUNITY || 0);
-  const userId    = deal.ASSIGNED_BY_ID || '';
-  const title     = deal.TITLE || 'New Deal';
-  const company   = deal.COMPANY_TITLE || deal.CONTACT_FULL_NAME || '';
-  const person    = USER_MAP[userId] || `User #${userId}`;
-  const formatted = formatAmount(amount);
-  const tier      = getTier(amount);
-
-  if (WON_STAGES.has(stageId)) {
-    if (amount >= 25000) {
-      addToToday({ wins: 1 });
-      addToMonthly({ wins: 1 });
-      broadcast({ type: 'today', data: todayStats });
-      broadcast({
-        type:        'celebration',
-        triggerType: 'win',
-        tier,
-        headline:    tier.name,
-        subtext:     'Deal Won',
-        person,
-        product:     title,
-        client:      company || title,
-        location:    '',
-        amount:      formatted,
-        eventType:   'Deal Won',
-      });
-      broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
-    }
-    // Refresh tickers after a win
-    setTimeout(pollBitrix, 3000);
-    return;
-  }
-
-  if (event === 'ONCRMDEALADD' && amount >= 25000) { // min ₹25K threshold
-    broadcast({
-      type:        'celebration',
-      triggerType: 'deal',
-      tier,
-      headline:    'BIG DEAL IN!',
-      subtext:     'Significant pipeline entry',
-      person,
-      product:     title,
-      client:      company || title,
-      location:    '',
-      amount:      formatted,
-      eventType:   'Major Deal Created',
-    });
-  }
+  // Bitrix outbound webhooks (ONCRMDEALADD / ONCRMDEALUPDATE) only carry the deal ID,
+  // so we just run the watcher now instead of waiting for the next 60s check.
+  setTimeout(checkDealEvents, 1500);
 });
 
 // ── MANUAL TRIGGER ────────────────────────────────────────────────────────────
@@ -485,8 +660,8 @@ app.post('/trigger', requireUser, (req, res) => {
   }
   console.log(`[TRIGGER] ${triggerType} ${amount} for ${person} by ${req.user.email}`);
 
-  if (!['order','delivery'].includes(triggerType)) {
-    return res.status(400).json({ error: 'triggerType must be order or delivery' });
+  if (!['order','delivery','win'].includes(triggerType)) {
+    return res.status(400).json({ error: 'triggerType must be order, delivery or win' });
   }
 
   const amountRaw = String(amount || '0').replace(/[^0-9.LCrKk]/g, '');
@@ -507,24 +682,29 @@ app.post('/trigger', requireUser, (req, res) => {
   const headlines = {
     order:    { 'SPARK': 'ORDER IN!', 'DEAL DONE': 'ORDER LOCKED!', 'DEAL BOMB': 'DEAL BOMB! 💥', 'SUPER DEAL': 'SUPER DEAL! 🚀' },
     delivery: { 'SPARK': 'OUT THE DOOR!', 'DEAL DONE': 'DELIVERED!', 'DEAL BOMB': 'BOMB AWAY! 💥', 'SUPER DEAL': 'MEGA DISPATCH! 🚀' },
+    win:      { 'SPARK': 'WIN!', 'DEAL DONE': 'DEAL WON!', 'DEAL BOMB': 'DEAL WON! 🏆', 'SUPER DEAL': 'MASSIVE WIN! 🚀' },
   };
 
   const subtexts = {
     order:    'Advance Received · Order Confirmed',
     delivery: 'Material Dispatched',
+    win:      'Deal Closed · CRM Updated',
   };
 
   // Accumulate into today's and monthly totals
   const isOrder    = triggerType === 'order';
   const isDelivery = triggerType === 'delivery';
+  const isWin      = triggerType === 'win';
   addToToday({
     orders:     isOrder    ? 1 : 0,
     deliveries: isDelivery ? 1 : 0,
     revenue:    isOrder    ? raw : 0,   // revenue counted on order, not delivery
+    wins:       isWin      ? 1 : 0,
   });
   addToMonthly({
     revenue: isOrder ? raw : 0,
     orders:  isOrder ? 1  : 0,
+    wins:    isWin   ? 1  : 0,
   });
 
   broadcast({
@@ -538,7 +718,8 @@ app.post('/trigger', requireUser, (req, res) => {
     client:      client   || 'Client',
     location:    location || '',
     amount:      formatted,
-    eventType:   triggerType === 'order' ? 'Order Confirmed' : 'Delivery',
+    eventType:   isOrder ? 'Order Confirmed' : isWin ? 'Deal Won' : 'Delivery',
+    by:          req.user.name,
   });
 
   // Push updated stats to all screens
