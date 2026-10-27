@@ -40,7 +40,7 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '562668480557-l07d7pdhp
 const ALLOWED_DOMAIN   = 'uniqueflooring.in';
 const ADMIN_USERS = {
   'sambhav@uniqueflooring.in':  { name:'Sambhav', init:'SK', role:'Founder & MD',   perms:['order','delivery','win'], lb:true  },
-  'surmeet@uniqueflooring.in':  { name:'Surmeet', init:'SU', role:'Assistant',      perms:['order','delivery','win'], lb:false },
+  'surmeet@uniqueflooring.in':  { name:'Surmeet', init:'SU', role:'Assistant',      perms:['order','delivery','win'], lb:true  },
   'accounts2@uniqueflooring.in':{ name:'Ankush',  init:'AN', role:'Accounts & Ops', perms:['order','delivery'],       lb:true  },
   'miraj@uniqueflooring.in':    { name:'Miraj',   init:'MI', role:'Billing',        perms:['order','delivery'],       lb:false },
 };
