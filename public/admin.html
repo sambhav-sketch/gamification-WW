@@ -576,7 +576,13 @@ function updateFireBtn() {
 
 /* ── FIRE ────────────────────────────────────────────────────────── */
 function quickFire(type) {
-  fire(type, selectedPerson, 'Product', 'Client', '', '₹0');
+  // Quick buttons use the amount / product / client typed in the form below
+  const amount = document.getElementById('f-amount').value.trim();
+  if (!amount || !parseRaw(amount)) { showToast('Enter the amount first (e.g. 250000 or 2.5L)','err'); document.getElementById('f-amount').focus(); return; }
+  const product = document.getElementById('f-product').value.trim()||'Product';
+  const client  = document.getElementById('f-client').value.trim()||'Client';
+  const location= document.getElementById('f-location').value.trim()||'';
+  fire(type, selectedPerson, product, client, location, amount);
 }
 function fireCustom() {
   const amount  = document.getElementById('f-amount').value.trim();
@@ -589,6 +595,7 @@ function fireCustom() {
 
 async function fire(triggerType, person, product, client, location, amountRaw) {
   const raw=parseRaw(amountRaw);
+  if (!raw) { showToast('Enter the amount first','err'); return; }
   // Minimum threshold: ₹25,000 — no celebration below this
   if (raw > 0 && raw < 25000) {
     showToast('⚠️ Below ₹25K minimum — celebration not fired','err');
