@@ -399,61 +399,76 @@ function bitrixFetch(method, params) {
 }
 
 // ── POLL BITRIX FOR TODAY'S DATA ───────────────────────────────────────────────
+// Read ALL pages of a Bitrix list (Bitrix returns 50 per page)
+async function bitrixListAll(method, params, maxPages = 40) {
+  const out = [];
+  let start = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const r = await bitrixFetch(method, { ...params, start });
+    if (!r || !Array.isArray(r.result)) break;
+    out.push(...r.result);
+    if (r.next === undefined || r.next === null) break;
+    start = r.next;
+    await new Promise(res => setTimeout(res, 550));   // stay under Bitrix's ~2 requests/second limit
+  }
+  return out;
+}
+
+const PIPELINE_ACTIVE_DAYS = 90;   // open deals with no update/activity for longer than this are treated as stale
+
 async function pollBitrix() {
   if (!BITRIX_URL) {
     console.log('[BITRIX] No webhook URL configured — ticker will use demo data');
     return;
   }
   try {
-    const todayStr = bitrixDate(today());
+    const todayIST = istDateStr();                       // YYYY-MM-DD in India time
+    const sinceIST = todayIST + 'T00:00:00+05:30';       // midnight IST
 
-    // Deals CREATED today
-    const created = await bitrixFetch('crm.deal.list', {
-      'filter[>=DATE_CREATE]': todayStr,
-      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','STAGE_ID','UF_CRM_PRODUCT'],
+    // Deals CREATED today (IST), biggest first
+    const created = await bitrixListAll('crm.deal.list', {
+      'filter[>=DATE_CREATE]': sinceIST,
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID'],
       'order[OPPORTUNITY]': 'DESC',
-      'start': 0
     });
 
-    // Deals WON today (stage changed to WON)
-    // Bitrix doesn't have a "won_date" filter natively; we filter by CLOSEDATE = today
-    const won = await bitrixFetch('crm.deal.list', {
-      'filter[STAGE_SEMANTIC_ID]': 'S',   // S = success (won); CLOSED=Y would also count lost deals
-      'filter[>=CLOSEDATE]':    todayStr,
-      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','STAGE_ID','UF_CRM_PRODUCT'],
+    // Deals WON today (success stage, closed today IST)
+    const won = await bitrixListAll('crm.deal.list', {
+      'filter[STAGE_SEMANTIC_ID]': 'S',
+      'filter[>=CLOSEDATE]': todayIST,
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID'],
       'order[OPPORTUNITY]': 'DESC',
-      'start': 0
     });
 
-    // Pipeline total (all open deals)
-    const pipeline = await bitrixFetch('crm.deal.list', {
+    // Pipeline: ALL open deals, excluding stale ones (no update or activity in PIPELINE_ACTIVE_DAYS)
+    const open = await bitrixListAll('crm.deal.list', {
       'filter[CLOSED]': 'N',
-      'select[]': ['OPPORTUNITY'],
-      'start': 0
+      'select[]': ['ID','OPPORTUNITY','DATE_MODIFY','LAST_ACTIVITY_TIME'],
     });
+    const cutoff = Date.now() - PIPELINE_ACTIVE_DAYS * 86400 * 1000;
+    const active = open.filter(d => Math.max(Date.parse(d.DATE_MODIFY || '') || 0, Date.parse(d.LAST_ACTIVITY_TIME || '') || 0) >= cutoff);
+    const pipelineVal = active.reduce((s, d) => s + (parseFloat(d.OPPORTUNITY) || 0), 0);
 
-    const mapDeals = (items) => {
-      if (!items?.result) return { count:0, value:0, top4:[] };
-      const list = items.result;
-      const totalVal = list.reduce((s,d) => s + parseFloat(d.OPPORTUNITY||0), 0);
-      const top4 = list.slice(0,4).map(d => ({
-        person:  USER_MAP[d.ASSIGNED_BY_ID] || `User #${d.ASSIGNED_BY_ID}`,
+    const mapDeals = (list) => ({
+      count: list.length,
+      value: list.reduce((s, d) => s + (parseFloat(d.OPPORTUNITY) || 0), 0),
+      top4:  list.slice(0, 4).map(d => ({
+        person:  USER_MAP[d.ASSIGNED_BY_ID] || userNameCache[String(d.ASSIGNED_BY_ID)] || `User #${d.ASSIGNED_BY_ID}`,
         product: d.TITLE || 'Deal',
-        amount:  formatAmount(parseFloat(d.OPPORTUNITY||0)),
-      }));
-      return { count: list.length, value: totalVal, top4 };
-    };
-
-    const pipelineVal = (pipeline?.result || []).reduce((s,d) => s + parseFloat(d.OPPORTUNITY||0), 0);
+        amount:  formatAmount(parseFloat(d.OPPORTUNITY || 0)),
+      })),
+    });
 
     tickerCache = {
       dealsCreated:  mapDeals(created),
       dealsWon:      mapDeals(won),
       pipelineTotal: pipelineVal,
+      pipelineDeals: active.length,
+      openDealsAll:  open.length,
       fetchedAt:     new Date().toISOString(),
     };
-
-    console.log('[BITRIX] Ticker updated:', JSON.stringify(tickerCache, null, 2));
+    console.log(`[BITRIX] Ticker: ${created.length} created, ${won.length} won today · pipeline ${formatAmount(pipelineVal)} from ${active.length} active of ${open.length} open deals`);
+    broadcast({ type: 'ticker', data: tickerCache });     // push to the TV straight away
   } catch(e) {
     console.log('[BITRIX] Poll error:', e.message);
   }
