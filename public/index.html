@@ -485,11 +485,22 @@ function updateStats(evt) {
 }
 
 /* ── FEED ────────────────────────────────────────────────────────────────── */
+// An entry deleted in admin: drop it from the feed and from the queue if not shown yet
+function retractEvent(id){
+  if(!id) return;
+  feedItems=feedItems.filter(f=>f.evt.id!==id);
+  for(let i=celQueue.length-1;i>=0;i--) if(celQueue[i].id===id) celQueue.splice(i,1);
+  renderFeed();
+}
 function addFeed(evt) {
   const t=evt.tier||{cls:'tier-done',icon:'🔥',name:'DEAL DONE'};
   const time=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
   feedItems.unshift({t,evt,time});
   if(feedItems.length>6) feedItems.pop();
+  renderFeed();
+}
+function renderFeed(){
+  if(!feedItems.length){ document.getElementById('feed').innerHTML=''; return; }
   document.getElementById('feed').innerHTML=feedItems.map(f=>`
     <div class="feed-item">
       <div class="fi-tier">${f.t.icon}</div>
@@ -503,7 +514,7 @@ function addFeed(evt) {
 }
 
 /* ── CELEBRATION ─────────────────────────────────────────────────────────── */
-const PHASE1=5000, PHASE2=5000;
+const PHASE1=10000, PHASE2=8000;   // celebration stays ~18 s in total
 let celTimer=null;
 
 /* Queue so back-to-back events each get their moment */
@@ -523,8 +534,32 @@ function photoHTML(person, cls){
   return `<div class="cel-photo ${cls||''}" data-init="${init}"><img src="${src}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.parentNode.textContent=this.parentNode.dataset.init"></div>`;
 }
 
+function showDealBanner(evt){
+  const box=document.getElementById('star-banner'), inner=document.getElementById('sb-inner');
+  const col='#7FC8E8';
+  const name=evt.person&&evt.person!=='Sales Team'?evt.person:'Sales Team';
+  const first=name.split(' ')[0];
+  const init=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const team=(LB_TEAMS.find(t=>t.key===lbGroup({name:evt._lbName||name}))||{}).label||'';
+  inner.style.setProperty('--sb-col', col); box.style.setProperty('--sb-col', col);
+  inner.innerHTML=`
+    <div class="sb-shine"></div>
+    <div class="sb-rank" style="font-size:4.4rem">🔔<small>NEW DEAL</small></div>
+    <div class="sb-photo" data-init="${init}"><img src="${SERVER_URL}/photo/${encodeURIComponent(evt._lbName||name)}" alt="" onerror="this.parentNode.textContent=this.parentNode.dataset.init"></div>
+    <div class="sb-text">
+      <div class="sb-kicker">New deal alert${team?' · '+team:''}</div>
+      <div class="sb-line">${first} just opened <b>${evt.amount&&evt.amount!=='—'?evt.amount:'a new deal'}</b></div>
+      <div class="sb-sub">${[name!=='Sales Team'?name:'', team?team+' team':'', evt.category||evt.product||'', evt.client&&evt.client!==(evt.category||evt.product)?evt.client:''].filter(Boolean).join(' · ')}</div>
+    </div>`;
+  inner.style.animationDuration='16s';
+  box.classList.remove('run'); void box.offsetWidth; box.classList.add('run');
+  playEventSound(evt, evt.tier||{cls:'tier-spark'});
+  celTimer=setTimeout(nextCelebration, 16600);
+}
+
 function showCelebration(evt) {
   if(LB_ALIAS[evt.person]) evt={...evt, person:LB_ALIAS[evt.person].label, _lbName:evt.person};
+  if(evt.triggerType==='deal'){ showDealBanner(evt); return; }
   const tier=evt.tier||{cls:'tier-done',icon:'🔥',name:'DEAL DONE'};
   const isNewDeal = evt.triggerType==='deal';
   const cel=document.getElementById('celebration');
@@ -569,7 +604,9 @@ function showCelebration(evt) {
   const myGroup=lbGroup({name:lbName, role:tm.role});
   const rank = LB_ALIAS[lbName] ? lbb.teams.findIndex(t=>t.key==='perscape')+1 : lbb.people.findIndex(p=>p.name===lbName)+1;
   document.getElementById('cel-sp-name').textContent = fname;
-  document.getElementById('cel-sp-role').textContent = (LB_ALIAS[lbName]?.role)||tm.role||'';
+  const teamLabel=(LB_TEAMS.find(t=>t.key===myGroup)||{}).label||'';
+  document.getElementById('cel-sp-role').textContent = (LB_ALIAS[lbName]?.role)||(teamLabel?teamLabel+' team':'')||tm.role||'';
+  document.getElementById('cel-person').textContent = (evt.person||'—')+(teamLabel&&!LB_ALIAS[lbName]?' · '+teamLabel:'');
   document.getElementById('cel-sp-wins').textContent = ms.wins||0;
   document.getElementById('cel-sp-rev').textContent  = fmt(ms.rev||0);
   document.getElementById('cel-sp-rank').textContent = rank?'#'+rank:'—';
@@ -643,6 +680,7 @@ function showStarBanner(i){
       <div class="sb-stat"><div class="sb-val">${p.wins||0}</div><div class="sb-lbl">Wins</div></div>
       <div class="sb-stat"><div class="sb-val">${p.orders||0}</div><div class="sb-lbl">Orders</div></div>
     </div>`;
+  inner.style.animationDuration='11s';
   box.classList.remove('run'); void box.offsetWidth; box.classList.add('run');
   if(soundOn && actx){ noise(0,0.9,{vol:0.25,filter:900}); tone(660,0.5,0.6,{vol:0.12}); tone(990,0.65,0.8,{vol:0.1}); }
   return true;
@@ -759,14 +797,18 @@ function spokenAmount(a){
 }
 function announce(evt, tier){
   if(!soundOn || !window.speechSynthesis) return;
-  const what = {deal:'New deal created', order:'Order confirmed', delivery:'Delivery confirmed', win:'Deal won'}[evt.triggerType]||'Great news';
+  const what = {deal:'New deal alert', order:'Order confirmed', delivery:'Delivery confirmed', win:'Deal won'}[evt.triggerType]||'Great news';
   const hype = {'tier-bomb':'Deal bomb! ','tier-super':'Super deal! '}[tier.cls]||'';
-  const parts=[hype+what+'!', evt.person&&evt.person!=='Sales Team'?evt.person:'', spokenAmount(evt.amount), evt.client&&evt.client!==evt.product?evt.client:''].filter(Boolean);
+  const extra = evt.triggerType==='deal' ? (evt.category||'') : (evt.client&&evt.client!==evt.product?evt.client:'');
+  const parts=[(evt.triggerType==='deal'?'':hype)+what+'!', evt.person&&evt.person!=='Sales Team'?evt.person:'', spokenAmount(evt.amount), extra].filter(Boolean);
   const u=new SpeechSynthesisUtterance(parts.join('. '));
   const v=speechSynthesis.getVoices(); u.voice=v.find(x=>x.lang==='en-IN')||v.find(x=>/en[-_]GB/.test(x.lang))||v.find(x=>x.lang.startsWith('en'))||null;
   u.rate=0.95; u.pitch=1.05; u.volume=1;
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
+
+/* Keep-alive: an HTTP ping every 4 min stops Render's free plan from sleeping while the TV is on */
+setInterval(()=>{ fetch(SERVER_URL+'/health',{cache:'no-store'}).catch(()=>{}); }, 4*60*1000);
 
 /* ── WEBSOCKET ───────────────────────────────────────────────────────────── */
 const dot=document.getElementById('conn-dot');
@@ -780,6 +822,7 @@ function connect(){
   ws.onmessage=({data})=>{
     let m; try{m=JSON.parse(data);}catch(e){return;}
     if(m.type==='celebration'){addFeed(m);celebrate(m);}
+    if(m.type==='retract')    {retractEvent(m.id);}
     if(m.type==='ticker')     {renderTicker(m.data);}
     if(m.type==='leaderboard'){renderLeaderboard(m.data);}
     if(m.type==='monthly')    {renderMonthly(m.data, m.countdown);}
@@ -795,7 +838,7 @@ const demos={
   '2':{tier:{cls:'tier-done', icon:'🔥',name:'DEAL DONE'}, triggerType:'order',   headline:'ORDER LOCKED!',  subtext:'Advance Received · Order Confirmed', person:'Abhishek Sharma',    product:'Palazzo Engineered Oak', client:'Emaar Hills',      location:'Gurugram',  amount:'₹2.8L'},
   '3':{tier:{cls:'tier-bomb', icon:'💥',name:'DEAL BOMB'}, triggerType:'delivery',headline:'BOMB AWAY! 💥',  subtext:'Material Dispatched',               person:'Vishal Poddar',      product:'Alfresco Castillo',   client:'Prestige Group',     location:'Mumbai',    amount:'₹7.5L'},
   '4':{tier:{cls:'tier-super',icon:'🚀',name:'SUPER DEAL'},triggerType:'order',   headline:'SUPER DEAL! 🚀', subtext:'Advance Received · Order Confirmed', person:'Samarth Khandelwal', product:'Prodigy Chevron Oak', client:'DLF Phase V',        location:'Gurugram',  amount:'₹22L'},
-  'n':{tier:{cls:'tier-done', icon:'🔥',name:'DEAL DONE'}, triggerType:'deal',    headline:'NEW DEAL!',      subtext:'Deal Created in CRM',              person:'Geet Rawat',         product:'Villa flooring — Sector 54', client:'', location:'', amount:'₹3.2L'},
+  'n':{tier:{cls:'tier-done', icon:'🔥',name:'DEAL DONE'}, triggerType:'deal',    headline:'NEW DEAL!',      subtext:'Deal Created in CRM',              person:'Geet Rawat',         product:'Alfresco Terra Decking', category:'Alfresco Terra Decking', client:'Villa — Sector 54', location:'', amount:'₹3.2L'},
   'w':{tier:{cls:'tier-done', icon:'🏆',name:'DEAL DONE'}, triggerType:'win',     headline:'DEAL WON!',      subtext:'Deal Closed · CRM Updated',         person:'Anurag Khandelwal',  product:'Perscape Pergola',    client:'Studio Orion',       location:'Hyderabad', amount:'₹9L'},
 };
 document.addEventListener('keydown',e=>{
