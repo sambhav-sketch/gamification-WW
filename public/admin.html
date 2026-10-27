@@ -231,17 +231,28 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
 
   <!-- LEADERBOARD TAB (Manish only) -->
   <div id="pane-lb" class="body" style="display:none">
-    <div class="section-lbl">Update Leaderboard</div>
+    <div class="section-lbl">Weekly Sales Entry</div>
     <div class="card">
-      <div class="week-field">
-        <label>Week Ending (update every Monday)</label>
-        <input type="text" id="lb-week-input" placeholder="e.g. 25 Oct 2026">
+      <div style="font-size:.72rem;line-height:1.5;color:var(--cream);background:rgba(201,168,76,.10);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        Enter <b>only this week's sales</b> for each person — not the month total.<br>
+        The TV adds the weeks up automatically and resets to zero on the 1st.<br>
+        Made a mistake? Tap the week below, correct it and save again.
       </div>
+      <div class="week-field">
+        <label>Week ending (usually the Sunday)</label>
+        <input type="date" id="lb-week-input" onchange="onWeekDateChange()">
+      </div>
+      <div class="week-field">
+        <label>Saved weeks — tap one to edit</label>
+        <div id="lb-weeks" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+      <div id="lb-mode" style="font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin:6px 0 2px"></div>
       <div class="lb-team-editor" id="lb-editor"></div>
-      <button class="lb-save-btn" onclick="saveLeaderboard()">🏆 &nbsp; PUSH TO SCREEN</button>
+      <button class="lb-save-btn" id="lb-save-btn" onclick="saveLeaderboard()">🏆 &nbsp; SAVE THIS WEEK</button>
+      <button id="lb-del-btn" onclick="deleteWeek()" style="display:none;margin-top:8px;width:100%;background:none;border:1px solid rgba(224,122,106,.5);color:#e07a6a;border-radius:10px;padding:9px;font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;cursor:pointer">DELETE THIS WEEK</button>
       <div class="lb-last-update" id="lb-last-update"></div>
     </div>
-    <div class="section-lbl">Current Standings</div>
+    <div class="section-lbl">Month to Date (what the TV shows)</div>
     <div class="card" id="lb-current"><div class="empty">Fetching current data…</div></div>
   </div>
 
@@ -463,6 +474,7 @@ function login(user) {
   renderHistory();
   renderLbEditor();
   loadCurrentLb();
+  if (currentUser.lb) loadWeeks();
   updateFireBtn();
   connectWS();
 }
@@ -619,7 +631,7 @@ function renderLbEditor() {
 async function loadCurrentLb() {
   try {
     const d=await fetch(RELAY_URL+'/leaderboard').then(r=>r.json());
-    if (d?.updatedAt) document.getElementById('lb-last-update').textContent='Last pushed: '+new Date(d.updatedAt).toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+' by '+(d.updatedBy||'Manish');
+    if (d?.updatedAt) document.getElementById('lb-last-update').textContent='Last change: '+new Date(d.updatedAt).toLocaleString('en-IN',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' by '+(d.updatedBy||'—')+' · '+(d.weeksCount||0)+' week(s) this month';
     if (d?.teams?.length) {
       const lb=lbBuild(d);
       const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
@@ -634,15 +646,6 @@ async function loadCurrentLb() {
         lb.teams.map((t,i)=>row(medal(i),t.label,t.sub,t.weighted?fmtAmt(t.weighted):'—',t.mult>1?' <span style="font-size:.6rem;color:var(--gold)">(2×)</span>':'',`${t.wins}W · ${t.orders}O${t.mult>1&&t.revenue?' · actual '+fmtAmt(t.revenue):''}`)).join('')+
         '<div style="font-size:.6rem;letter-spacing:3px;color:var(--gold);margin:14px 0 4px">TOP SALESPEOPLE</div>'+
         (lb.people.slice(0,3).map((p,i)=>row(medal(i),p.name,(LB_TEAMS.find(t=>t.key===p.group)||{}).label||'',fmtAmt(p.revenue),'',`${p.wins}W · ${p.orders}O`)).join('')||'<div class="empty">No individual numbers yet</div>');
-      // Pre-fill editor
-      if (d.weekLabel) document.getElementById('lb-week-input').value=d.weekLabel;
-      d.teams.forEach(t=>{
-        const idx=TEAM.findIndex(x=>x.name===t.name);
-        if(idx<0) return;
-        document.getElementById('lb-rev-'+idx).value=t.revenue||'';
-        document.getElementById('lb-wins-'+idx).value=t.wins||'';
-        document.getElementById('lb-orders-'+idx).value=t.orders||'';
-      });
 
     } else {
       document.getElementById('lb-current').innerHTML='<div class="empty">No data yet</div>';
@@ -650,9 +653,52 @@ async function loadCurrentLb() {
   } catch(e){ document.getElementById('lb-current').innerHTML='<div class="empty">Could not fetch current standings</div>'; }
 }
 
+/* Weekly entry: one week's numbers per person; the server sums the month */
+let lbWeekList = [];
+function lastSundayISO(){
+  const d=new Date(Date.now()+5.5*3600e3); const dow=d.getUTCDay(); d.setUTCDate(d.getUTCDate()-dow);
+  return d.toISOString().slice(0,10);
+}
+function niceDate(iso){ return new Date(iso+'T00:00:00Z').toLocaleDateString('en-IN',{day:'numeric',month:'short',timeZone:'UTC'}); }
+function fillWeekForm(entry){
+  TEAM.forEach((m,idx)=>{
+    const p=entry?(entry.people||[]).find(x=>x.name===m.name):null;
+    document.getElementById('lb-rev-'+idx).value   = p&&p.revenue?p.revenue:'';
+    document.getElementById('lb-wins-'+idx).value  = p&&p.wins?p.wins:'';
+    document.getElementById('lb-orders-'+idx).value= p&&p.orders?p.orders:'';
+  });
+  const date=document.getElementById('lb-week-input').value;
+  document.getElementById('lb-mode').textContent = entry ? `✏️ Editing week ending ${niceDate(date)} (saved by ${entry.updatedBy})` : (date?`New entry · week ending ${niceDate(date)}`:'');
+  document.getElementById('lb-save-btn').innerHTML = entry ? '💾 &nbsp; SAVE CORRECTIONS' : '🏆 &nbsp; SAVE THIS WEEK';
+  document.getElementById('lb-del-btn').style.display = entry ? 'block' : 'none';
+  renderWeekChips();
+}
+function renderWeekChips(){
+  const cur=document.getElementById('lb-week-input').value;
+  document.getElementById('lb-weeks').innerHTML = lbWeekList.length ? lbWeekList.map(w=>`
+    <button onclick="pickWeek('${w.weekEnding}')" style="border-radius:16px;padding:5px 11px;font-size:.62rem;cursor:pointer;border:1px solid ${w.weekEnding===cur?'var(--gold)':'var(--border)'};background:${w.weekEnding===cur?'rgba(201,168,76,.18)':'none'};color:var(--cream)">W/e ${niceDate(w.weekEnding)} · ${w.updatedBy}</button>`).join('')
+    : '<span style="font-size:.62rem;color:var(--dim)">No weeks saved yet</span>';
+}
+function pickWeek(iso){ document.getElementById('lb-week-input').value=iso; onWeekDateChange(); }
+function onWeekDateChange(){
+  const iso=document.getElementById('lb-week-input').value;
+  fillWeekForm(lbWeekList.find(w=>w.weekEnding===iso)||null);
+}
+async function loadWeeks(){
+  try{
+    const r=await fetch(RELAY_URL+'/leaderboard/weeks',{headers:authHeaders()});
+    if(handleAuthError(r)) return;
+    lbWeekList = r.ok ? await r.json() : [];
+  }catch{ lbWeekList=[]; }
+  const inp=document.getElementById('lb-week-input');
+  if(!inp.value) inp.value=lastSundayISO();
+  onWeekDateChange();
+}
+
 async function saveLeaderboard() {
-  const weekLabel=document.getElementById('lb-week-input').value.trim();
-  if (!weekLabel) { showToast('Enter week ending date','err'); return; }
+  const weekEnding=document.getElementById('lb-week-input').value;
+  if (!weekEnding) { showToast('Pick the week-ending date','err'); return; }
+  const editing=!!lbWeekList.find(w=>w.weekEnding===weekEnding);
   const teams=TEAM.map((m,idx)=>({
     name:   m.name,
     role:   m.role,
@@ -661,13 +707,26 @@ async function saveLeaderboard() {
     wins:   parseInt(document.getElementById('lb-wins-'+idx).value)||0,
     orders: parseInt(document.getElementById('lb-orders-'+idx).value)||0,
   }));
+  if(!teams.some(t=>t.revenue||t.wins||t.orders)){ showToast('All fields are empty — nothing to save','err'); return; }
   try {
-    const r=await fetch(`${RELAY_URL}/leaderboard`,{method:'POST',headers:authHeaders(),body:JSON.stringify({teams,weekLabel})});
+    const r=await fetch(`${RELAY_URL}/leaderboard`,{method:'POST',headers:authHeaders(),body:JSON.stringify({teams,weekEnding})});
     if(handleAuthError(r)) return;
     if(!r.ok){ const d=await r.json().catch(()=>({})); showToast(d.error||'Could not save','err'); return; }
-    showToast('🏆 Leaderboard pushed to screen!','ok');
-    loadCurrentLb();
+    showToast(editing?'✏️ Week corrected — TV updated':'🏆 Week saved — TV updated','ok');
+    await loadWeeks(); loadCurrentLb();
   } catch { showToast('Could not save — check connection','err'); }
+}
+
+async function deleteWeek(){
+  const weekEnding=document.getElementById('lb-week-input').value;
+  if(!weekEnding || !confirm(`Delete all numbers for the week ending ${niceDate(weekEnding)}?`)) return;
+  try{
+    const r=await fetch(`${RELAY_URL}/leaderboard/delete`,{method:'POST',headers:authHeaders(),body:JSON.stringify({weekEnding})});
+    if(handleAuthError(r)) return;
+    if(!r.ok){ const d=await r.json().catch(()=>({})); showToast(d.error||'Could not delete','err'); return; }
+    showToast('🗑️ Week deleted — TV updated','ok');
+    await loadWeeks(); loadCurrentLb();
+  }catch{ showToast('Could not delete — check connection','err'); }
 }
 
 /* ── HISTORY ─────────────────────────────────────────────────────── */
