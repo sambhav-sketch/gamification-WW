@@ -195,7 +195,8 @@ async function sheetLoadState() {
     const r = await sheetRequest('GET', `${SHEET_URL}?key=${encodeURIComponent(SHEET_KEY)}`);
     if (!r || !r.ok) throw new Error((r && r.error) || 'bad reply');
     const st = r.state || {};
-    if (st.leaderboard && Array.isArray(st.leaderboard.teams)) leaderboardData = st.leaderboard;
+    if (st.weeks && typeof st.weeks === 'object') lbWeeks = st.weeks;
+    rebuildLeaderboard();
     if (st.monthly && st.monthly.monthKey === currentMonthKey()) monthlyData = st.monthly;
     if (st.today && st.today.dateKey === todayDateKey()) todayStats = st.today;
     console.log('[SHEET] State restored from Google Sheet');
@@ -221,20 +222,53 @@ let leaderboardData = {
   ]
 };
 
-// Load persisted leaderboard if it exists
-if (fs.existsSync(LEADERBOARD_FILE)) {
-  try {
-    leaderboardData = JSON.parse(fs.readFileSync(LEADERBOARD_FILE, 'utf8'));
-    console.log('[LB] Loaded persisted leaderboard');
-  } catch(e) { console.log('[LB] Could not load leaderboard file:', e.message); }
+// ── WEEKLY ENTRIES → MONTH-TO-DATE LEADERBOARD ───────────────────────────────
+// Surmeet / Ankush enter ONLY one week's sales per person (keyed by week-ending date).
+// The board shows the sum of all weeks whose week-ending date falls in the current
+// month (IST) — so it resets to zero by itself on the 1st. Re-saving a week edits it.
+const WEEKS_FILE = path.join(__dirname, 'leaderboard-weeks.json');
+let lbWeeks = {};   // 'YYYY-MM-DD' → { weekEnding, updatedBy, updatedAt, people:[{name,role,group,revenue,wins,orders}] }
+if (fs.existsSync(WEEKS_FILE)) {
+  try { lbWeeks = JSON.parse(fs.readFileSync(WEEKS_FILE, 'utf8')); console.log('[LB] Loaded weekly entries'); }
+  catch (e) { console.log('[LB] Could not load weekly entries:', e.message); }
 }
 
-function saveLeaderboard() {
-  sheetSaveState('leaderboard', () => leaderboardData);
-  sheetPost('leaderboard', 'history', leaderboardData);
-  try { fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboardData, null, 2)); }
-  catch(e) { console.log('[LB] Could not save leaderboard:', e.message); }
+function istMonthKey() { return new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 7); }
+function weekLabelOf(d) {
+  return new Date(d + 'T00:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
+
+function rebuildLeaderboard() {
+  const mk = istMonthKey();
+  const weeks = Object.values(lbWeeks).filter(w => w.weekEnding.slice(0, 7) === mk)
+    .sort((a, b) => a.weekEnding.localeCompare(b.weekEnding));
+  const sum = {};
+  for (const w of weeks) for (const p of (w.people || [])) {
+    const t = sum[p.name] || (sum[p.name] = { name: p.name, role: p.role, group: p.group, revenue: 0, wins: 0, orders: 0 });
+    t.revenue += +p.revenue || 0; t.wins += +p.wins || 0; t.orders += +p.orders || 0;
+  }
+  const lastEntry = weeks[weeks.length - 1];
+  const lastEdit  = weeks.reduce((a, w) => (!a || w.updatedAt > a.updatedAt ? w : a), null);
+  leaderboardData = {
+    monthKey:   mk,
+    weeksCount: weeks.length,
+    weekLabel:  lastEntry ? weekLabelOf(lastEntry.weekEnding) : '',
+    updatedBy:  lastEdit ? lastEdit.updatedBy : '',
+    updatedAt:  lastEdit ? lastEdit.updatedAt : '',
+    teams:      Object.values(sum),
+  };
+  return leaderboardData;
+}
+
+function saveLeaderboard(changedWeek) {
+  // keep ~4 months of weekly entries
+  const cutoff = new Date(Date.now() - 120 * 86400 * 1000).toISOString().slice(0, 10);
+  for (const k of Object.keys(lbWeeks)) if (k < cutoff) delete lbWeeks[k];
+  try { fs.writeFileSync(WEEKS_FILE, JSON.stringify(lbWeeks, null, 2)); } catch (e) {}
+  sheetSaveState('weeks', () => lbWeeks);
+  if (changedWeek) sheetPost('leaderboard', 'history', changedWeek);
+}
+rebuildLeaderboard();
 
 // ── MONTHLY STATS STORE ───────────────────────────────────────────────────────
 // Monthly revenue totals reset on the 1st of each month.
@@ -321,6 +355,11 @@ function schedMidnightReset() {
     todayStats = { dateKey: todayDateKey(), orders: 0, deliveries: 0, revenue: 0, wins: 0 };
     broadcast({ type: 'today', data: todayStats });
     console.log('[TODAY] Midnight IST reset — stats cleared');
+    if (leaderboardData.monthKey !== istMonthKey()) {          // 1st of the month → board back to zero
+      rebuildLeaderboard();
+      broadcast({ type: 'leaderboard', data: leaderboardData });
+      console.log('[LB] New month — leaderboard reset');
+    }
     schedMidnightReset();
   }, ms);
   console.log(`[TODAY] Next reset in ${Math.round(ms/60000)} min`);
@@ -762,26 +801,48 @@ app.post('/ticker/refresh', requireUser, async (req, res) => {
 
 // ── LEADERBOARD ENDPOINTS ─────────────────────────────────────────────────────
 app.get('/leaderboard', (req, res) => {
+  if (leaderboardData.monthKey !== istMonthKey()) rebuildLeaderboard();
   res.json(leaderboardData);
 });
 
-// Manish updates this every Monday
+// Weekly entries of this month and last month (for the admin "edit a week" list)
+app.get('/leaderboard/weeks', requireUser, (req, res) => {
+  if (!req.user.lb) return res.status(403).json({ error: 'You are not allowed to update the leaderboard' });
+  const from = new Date(Date.now() + 5.5 * 3600 * 1000); from.setUTCDate(1); from.setUTCMonth(from.getUTCMonth() - 1);
+  const fromKey = from.toISOString().slice(0, 10);
+  res.json(Object.values(lbWeeks).filter(w => w.weekEnding >= fromKey).sort((a, b) => b.weekEnding.localeCompare(a.weekEnding)));
+});
+
+// Save (or correct) ONE week's numbers. Body: { weekEnding:'YYYY-MM-DD', teams:[{name,role,group,revenue,wins,orders}] }
 app.post('/leaderboard', requireUser, (req, res) => {
   if (!req.user.lb) return res.status(403).json({ error: 'You are not allowed to update the leaderboard' });
-  const { teams, weekLabel } = req.body;
-  const updatedBy = req.user.name;
-  console.log(`[LEADERBOARD] updated by ${req.user.email}`);
+  const { teams, weekEnding } = req.body;
   if (!Array.isArray(teams)) return res.status(400).json({ error: 'teams must be array' });
-
-  leaderboardData = {
-    updatedBy: updatedBy || 'Manish',
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(weekEnding || ''))) return res.status(400).json({ error: 'Pick the week-ending date' });
+  const isEdit = !!lbWeeks[weekEnding];
+  lbWeeks[weekEnding] = {
+    weekEnding,
+    updatedBy: req.user.name,
     updatedAt: new Date().toISOString(),
-    weekLabel: weekLabel || `W/e ${new Date().toLocaleDateString('en-IN')}`,
-    teams,
+    people: teams.map(p => ({ name: p.name, role: p.role, group: p.group, revenue: +p.revenue || 0, wins: +p.wins || 0, orders: +p.orders || 0 }))
+                 .filter(p => p.revenue || p.wins || p.orders),
   };
-  saveLeaderboard();
+  console.log(`[LEADERBOARD] week ${weekEnding} ${isEdit ? 'corrected' : 'saved'} by ${req.user.email}`);
+  saveLeaderboard({ weekLabel: weekLabelOf(weekEnding) + (isEdit ? ' (corrected)' : ''), updatedBy: req.user.name, teams: lbWeeks[weekEnding].people });
+  rebuildLeaderboard();
+  broadcast({ type: 'leaderboard', data: leaderboardData });
+  res.json({ ok: true, edited: isEdit, monthToDate: leaderboardData });
+});
 
-  // Push updated leaderboard to all screens
+// Remove a week entered by mistake
+app.post('/leaderboard/delete', requireUser, (req, res) => {
+  if (!req.user.lb) return res.status(403).json({ error: 'You are not allowed to update the leaderboard' });
+  const { weekEnding } = req.body;
+  if (!lbWeeks[weekEnding]) return res.status(404).json({ error: 'No entry for that week' });
+  delete lbWeeks[weekEnding];
+  console.log(`[LEADERBOARD] week ${weekEnding} deleted by ${req.user.email}`);
+  saveLeaderboard({ weekLabel: weekLabelOf(weekEnding) + ' (deleted)', updatedBy: req.user.name, teams: [] });
+  rebuildLeaderboard();
   broadcast({ type: 'leaderboard', data: leaderboardData });
   res.json({ ok: true });
 });
