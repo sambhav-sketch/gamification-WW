@@ -208,7 +208,7 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
       <div class="ticker-card pipeline">
         <div class="tk-label">Live Pipeline Value</div>
         <div class="tk-main"><div class="tk-count" id="tk-pipeline">—</div></div>
-        <div class="tk-sub">All open deals</div>
+        <div class="tk-sub" id="tk-pipeline-sub">Active open deals (last 90 days)</div>
       </div>
     </div>
     <div class="header-right">
@@ -432,6 +432,7 @@ function renderTicker(d) {
   document.getElementById('tk-won-value').textContent     = w.value?fmt(w.value):'';
   document.getElementById('tk-won-sub').textContent       = (w.top4||[]).map(x=>x.person.split(' ')[0]+' · '+x.amount).join('  ·  ')||'No wins yet today';
   document.getElementById('tk-pipeline').textContent      = d.pipelineTotal?fmt(d.pipelineTotal):'—';
+  if (d.pipelineDeals) { const el=document.getElementById('tk-pipeline-sub'); if(el) el.textContent=d.pipelineDeals+' active open deals (last 90 days)'; }
   if (d.fetchedAt) {
     const t=new Date(d.fetchedAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
     document.getElementById('ticker-refresh').textContent='Last updated '+t;
