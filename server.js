@@ -491,6 +491,21 @@ async function loadDealMeta() {
     (c?.result || []).forEach(x => { pipelineNames[String(x.ID)] = x.NAME; });
   } catch (e) { pipelineNames = {}; }
 }
+// Salesperson name for a Bitrix user ID: the fixed map first, else looked up in Bitrix (cached)
+const userNameCache = {};
+async function personName(id) {
+  id = String(id || '');
+  if (!id) return 'Sales Team';
+  if (USER_MAP[id]) return USER_MAP[id];
+  if (userNameCache[id]) return userNameCache[id];
+  try {
+    const u = (await bitrixFetch('user.get', { ID: id }))?.result?.[0];
+    const n = [u?.NAME, u?.LAST_NAME].filter(Boolean).join(' ').trim();
+    if (n) { userNameCache[id] = n; return n; }
+  } catch (e) {}
+  return 'Sales Team';
+}
+
 function productCategory(d) {
   let v = d.UF_CRM_PRODUCT;
   if (Array.isArray(v)) v = v.map(x => (productItems && productItems[String(x)]) || x).filter(Boolean).join(', ');
@@ -523,7 +538,7 @@ async function checkDealEvents() {
         const created = Date.parse(d.DATE_CREATE || '') || Date.now();
         if (Date.now() - created > 3 * 3600 * 1000) continue;     // old deal found after a long sleep — don't announce
         const amount   = parseFloat(d.OPPORTUNITY || 0);
-        const person   = USER_MAP[d.ASSIGNED_BY_ID] || 'Sales Team';
+        const person   = await personName(d.ASSIGNED_BY_ID);
         const category = productCategory(d) || (pipelineNames && pipelineNames[String(d.CATEGORY_ID || 0)]) || '';
         console.log(`[WATCH] New deal #${d.ID} ${d.TITLE} ${amount} [${category}] by ${person}`);
         broadcast({
@@ -548,7 +563,7 @@ async function checkDealEvents() {
       wonSeen.add(d.ID);
       if (first) continue;
       const amount = parseFloat(d.OPPORTUNITY || 0);
-      const person = USER_MAP[d.ASSIGNED_BY_ID] || 'Sales Team';
+      const person = await personName(d.ASSIGNED_BY_ID);
       const tier   = getTier(amount);
       console.log(`[WATCH] Deal won #${d.ID} ${d.TITLE} ${amount} by ${person}`);
       addToToday({ wins: 1 });
