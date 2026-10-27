@@ -199,6 +199,7 @@ async function sheetLoadState() {
     rebuildLeaderboard();
     if (st.monthly && st.monthly.monthKey === currentMonthKey()) monthlyData = st.monthly;
     if (st.today && st.today.dateKey === todayDateKey()) todayStats = st.today;
+    if (Array.isArray(st.activity)) { activityLog = st.activity; pruneActivity(); }
     if (st.watch && +st.watch.lastDealId > 0) { lastDealId = +st.watch.lastDealId; console.log('[WATCH] Resuming after deal #' + lastDealId); }
     console.log('[SHEET] State restored from Google Sheet');
     broadcast({ type: 'leaderboard', data: leaderboardData });
@@ -739,6 +740,14 @@ app.post('/bitrix/deal', (req, res) => {
   setTimeout(checkDealEvents, 1500);
 });
 
+// ── ACTIVITY LOG (manual triggers, last 3 days) ───────────────────────────────
+let activityLog = [];   // newest first: { id, ts, dateKey, monthKey, triggerType, person, product, client, location, amount, raw, by, email }
+function pruneActivity() {
+  const cutoff = Date.now() - 3 * 86400 * 1000;
+  activityLog = activityLog.filter(a => a.ts >= cutoff).slice(0, 300);
+}
+function saveActivity() { pruneActivity(); sheetSaveState('activity', () => activityLog); }
+
 // ── MANUAL TRIGGER ────────────────────────────────────────────────────────────
 // triggerType: 'order' (advance received) | 'delivery' (material dispatched)
 app.post('/trigger', requireUser, (req, res) => {
@@ -795,8 +804,18 @@ app.post('/trigger', requireUser, (req, res) => {
     wins:    isWin   ? 1  : 0,
   });
 
+  const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    ts: Date.now(), dateKey: todayDateKey(), monthKey: monthlyData.monthKey,
+    triggerType, person: person || 'Sales Team', product: product || '', client: client || '', location: location || '',
+    amount: formatted, raw, by: req.user.name, email: req.user.email,
+  };
+  activityLog.unshift(entry);
+  saveActivity();
+
   broadcast({
     type:        'celebration',
+    id:          entry.id,
     triggerType,
     tier,
     headline:    headlines[triggerType][tier.name],
@@ -814,7 +833,44 @@ app.post('/trigger', requireUser, (req, res) => {
   broadcast({ type: 'today',   data: todayStats });
   broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
 
-  res.json({ ok: true, screens: connectedScreens, tier: tier.name, amount: formatted });
+  res.json({ ok: true, id: entry.id, screens: connectedScreens, tier: tier.name, amount: formatted });
+});
+
+// List recent manual triggers (admin History tab)
+app.get('/activity', requireUser, (req, res) => {
+  pruneActivity();
+  res.json(activityLog.map(a => ({ ...a, canDelete: req.user.perms.includes(a.triggerType) })));
+});
+
+// Delete a wrong entry: removes it from the TV feed and reverses today's / this month's totals
+app.post('/activity/delete', requireUser, (req, res) => {
+  const i = activityLog.findIndex(a => a.id === req.body.id);
+  if (i < 0) return res.status(404).json({ error: 'Entry not found (older than 3 days?)' });
+  const a = activityLog[i];
+  if (!req.user.perms.includes(a.triggerType)) return res.status(403).json({ error: 'You are not allowed to delete this entry' });
+  activityLog.splice(i, 1);
+  const isOrder = a.triggerType === 'order', isDelivery = a.triggerType === 'delivery', isWin = a.triggerType === 'win';
+  if (a.dateKey === todayDateKey()) {
+    todayStats.orders     = Math.max(0, todayStats.orders     - (isOrder ? 1 : 0));
+    todayStats.deliveries = Math.max(0, todayStats.deliveries - (isDelivery ? 1 : 0));
+    todayStats.revenue    = Math.max(0, todayStats.revenue    - (isOrder ? a.raw : 0));
+    todayStats.wins       = Math.max(0, todayStats.wins       - (isWin ? 1 : 0));
+    sheetSaveState('today', () => todayStats);
+  }
+  if (a.monthKey === monthlyData.monthKey) {
+    monthlyData.totalRevenue = Math.max(0, monthlyData.totalRevenue - (isOrder ? a.raw : 0));
+    monthlyData.totalOrders  = Math.max(0, monthlyData.totalOrders  - (isOrder ? 1 : 0));
+    monthlyData.totalWins    = Math.max(0, monthlyData.totalWins    - (isWin ? 1 : 0));
+    saveMonthly();
+  }
+  saveActivity();
+  console.log(`[ACTIVITY] deleted ${a.triggerType} ${a.amount} for ${a.person} (by ${a.by}) — deleted by ${req.user.email}`);
+  sheetPost('log', 'activity', { eventType: 'DELETED · ' + ({ order: 'Order Confirmed', delivery: 'Delivery', win: 'Deal Won' }[a.triggerType] || a.triggerType),
+    person: a.person, product: a.product, client: a.client, location: a.location, amount: a.amount, by: req.user.name });
+  broadcast({ type: 'retract', id: a.id });
+  broadcast({ type: 'today',   data: todayStats });
+  broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
+  res.json({ ok: true });
 });
 
 // ── TODAY ENDPOINT ────────────────────────────────────────────────────────────
