@@ -301,6 +301,49 @@ const TEAM = [
   { name:'Rahul',              init:'RA', role:'Perscape Guwahati',  bitrixId:'2893' },
 ];
 
+/* ── LEADERBOARD RULES ───────────────────────────────────────────────────── */
+// Team leaderboard: individual numbers are summed per team.
+// Retail (B2C) and Perscape (A&D / direct projects) are harder sales with higher margins,
+// so their TEAM revenue counts 2×. Individual figures always stay actual.
+const LB_TEAMS = [
+  { key:'north',    label:'North & South',  sub:"Samarth's team",  init:'NS', mult:1 },
+  { key:'delhi',    label:'Delhi B2B',      sub:"Abhishek's team", init:'DL', mult:1 },
+  { key:'west',     label:'West & Central', sub:"Vishal's team",   init:'WC', mult:1 },
+  { key:'b2c',      label:'Retail',         sub:"Geet's team",     init:'RT', mult:2 },
+  { key:'perscape', label:'Perscape',       sub:'A&D Projects',    init:'PS', mult:2 },
+];
+const LB_PERSON_GROUP = {
+  'Geet Rawat':'b2c','Pooja':'b2c','Ritu Dhuper':'b2c','Rishabh':'b2c','Prashant':'b2c',
+  'Vishal Poddar':'west','Somender':'west','Kishan':'west','Umesh':'west','Shubham':'west','Priyanshi':'west',
+  'Abhishek Wilson':'delhi','Ashwani Kumar':'delhi','Janak':'delhi','Sooraj':'delhi','Aarif':'delhi',
+  'Samarth Khandelwal':'north','Mansi':'north','Hemant':'north','Waseem':'north','Abhishek Sharma':'north','Ayush':'north',
+  'Anurag Khandelwal':'perscape','Divya':'perscape','Krishna':'perscape','Sampada':'perscape','Vishal Choudhary':'perscape','Prachi':'perscape','Rahul':'perscape',
+};
+// Anurag (partner) is never shown by name — his entries appear as the Perscape team.
+const LB_ALIAS = { 'Anurag Khandelwal': { label:'Perscape', init:'PS', role:'A&D Projects' } };
+function lbGroup(p){
+  if(p.group) return p.group;
+  if(LB_PERSON_GROUP[p.name]) return LB_PERSON_GROUP[p.name];
+  const r=(p.role||'').toLowerCase();
+  if(/perscape|a&d/.test(r)) return 'perscape';
+  if(/retail|b2c/.test(r)) return 'b2c';
+  if(/west|central/.test(r)) return 'west';
+  if(/delhi/.test(r)) return 'delhi';
+  if(/north|south/.test(r)) return 'north';
+  return null;
+}
+function lbBuild(data){
+  const people=(data?.teams||[]).map(p=>({...p, group:lbGroup(p), revenue:+p.revenue||0, wins:+p.wins||0, orders:+p.orders||0}));
+  const teams=LB_TEAMS.map(t=>{
+    const m=people.filter(p=>p.group===t.key);
+    const revenue=m.reduce((s,p)=>s+p.revenue,0);
+    return {...t, revenue, weighted:revenue*t.mult, wins:m.reduce((s,p)=>s+p.wins,0), orders:m.reduce((s,p)=>s+p.orders,0)};
+  }).sort((a,b)=>b.weighted-a.weighted);
+  const ranked=people.filter(p=>!LB_ALIAS[p.name] && p.revenue>0).sort((a,b)=>b.revenue-a.revenue);
+  return { teams, people:ranked, hasData:people.some(p=>p.revenue||p.wins||p.orders) };
+}
+function lbSlug(n){ return String(n||'').replace(/[^A-Za-z0-9]+/g,'-'); }
+
 /* ── TYPE CONFIG ─────────────────────────────────────────────────── */
 const TYPE_CFG = {
   order:    { label:'Order Confirmed', icon:'📦', subtext:'Advance Received · Order Confirmed', cls:'order',    fireCls:'order'   },
@@ -561,13 +604,14 @@ async function fire(triggerType, person, product, client, location, amountRaw) {
 
 /* ── LEADERBOARD EDITOR ──────────────────────────────────────────── */
 function renderLbEditor() {
-  document.getElementById('lb-editor').innerHTML=TEAM.map(m=>`
+  document.getElementById('lb-editor').innerHTML=TEAM.map((m,idx)=>`
+    ${idx===0||lbGroup(TEAM[idx-1])!==lbGroup(m)?`<div style="font-family:'Barlow Condensed',sans-serif;font-size:.7rem;letter-spacing:3px;color:var(--gold);margin:14px 0 6px;text-transform:uppercase">${(LB_TEAMS.find(t=>t.key===lbGroup(m))||{}).label||''}${(LB_TEAMS.find(t=>t.key===lbGroup(m))||{}).mult>1?' · team total counts 2×':''}</div>`:''}
     <div class="lb-team-row">
       <div class="lb-team-name">${m.name} <span style="color:var(--dim);font-size:.6rem;font-weight:400">${m.role}</span></div>
       <div class="lb-fields">
-        <div class="lb-field"><label>Revenue (₹)</label><input type="number" id="lb-rev-${m.init}" placeholder="0" min="0"></div>
-        <div class="lb-field"><label>Wins</label><input type="number" id="lb-wins-${m.init}" placeholder="0" min="0"></div>
-        <div class="lb-field"><label>Orders</label><input type="number" id="lb-orders-${m.init}" placeholder="0" min="0"></div>
+        <div class="lb-field"><label>Revenue (₹)</label><input type="number" id="lb-rev-${idx}" placeholder="0" min="0"></div>
+        <div class="lb-field"><label>Wins</label><input type="number" id="lb-wins-${idx}" placeholder="0" min="0"></div>
+        <div class="lb-field"><label>Orders</label><input type="number" id="lb-orders-${idx}" placeholder="0" min="0"></div>
       </div>
     </div>`).join('');
 }
@@ -577,22 +621,29 @@ async function loadCurrentLb() {
     const d=await fetch(RELAY_URL+'/leaderboard').then(r=>r.json());
     if (d?.updatedAt) document.getElementById('lb-last-update').textContent='Last pushed: '+new Date(d.updatedAt).toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+' by '+(d.updatedBy||'Manish');
     if (d?.teams?.length) {
-      const sorted=[...d.teams].sort((a,b)=>(b.revenue||0)-(a.revenue||0));
-      document.getElementById('lb-current').innerHTML=sorted.map((t,i)=>`
+      const lb=lbBuild(d);
+      const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
+      const row=(rank,name,sub,val,tag,small)=>`
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;width:22px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
-          <div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-size:.85rem;font-weight:700">${t.name.split(' ')[0]}</div><div style="font-size:.55rem;color:var(--dim)">${t.role||''}</div></div>
-          <div style="text-align:right"><div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;font-weight:800;color:var(--gold-l)">${t.revenue?fmtAmt(t.revenue):'—'}</div><div style="font-size:.52rem;color:var(--dim)">${t.wins||0}W · ${t.orders||0}O</div></div>
-        </div>`).join('');
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;width:22px">${rank}</div>
+          <div style="flex:1"><div style="font-family:'Barlow Condensed',sans-serif;font-size:.85rem;font-weight:700">${name}</div><div style="font-size:.55rem;color:var(--dim)">${sub}</div></div>
+          <div style="text-align:right"><div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;font-weight:800;color:var(--gold-l)">${val}${tag}</div><div style="font-size:.52rem;color:var(--dim)">${small}</div></div>
+        </div>`;
+      document.getElementById('lb-current').innerHTML=
+        '<div style="font-size:.6rem;letter-spacing:3px;color:var(--gold);margin:4px 0">TEAMS</div>'+
+        lb.teams.map((t,i)=>row(medal(i),t.label,t.sub,t.weighted?fmtAmt(t.weighted):'—',t.mult>1?' <span style="font-size:.6rem;color:var(--gold)">(2×)</span>':'',`${t.wins}W · ${t.orders}O${t.mult>1&&t.revenue?' · actual '+fmtAmt(t.revenue):''}`)).join('')+
+        '<div style="font-size:.6rem;letter-spacing:3px;color:var(--gold);margin:14px 0 4px">TOP SALESPEOPLE</div>'+
+        (lb.people.slice(0,3).map((p,i)=>row(medal(i),p.name,(LB_TEAMS.find(t=>t.key===p.group)||{}).label||'',fmtAmt(p.revenue),'',`${p.wins}W · ${p.orders}O`)).join('')||'<div class="empty">No individual numbers yet</div>');
       // Pre-fill editor
       if (d.weekLabel) document.getElementById('lb-week-input').value=d.weekLabel;
       d.teams.forEach(t=>{
-        const m=TEAM.find(x=>x.name===t.name);
-        if(!m) return;
-        document.getElementById('lb-rev-'+m.init).value=t.revenue||'';
-        document.getElementById('lb-wins-'+m.init).value=t.wins||'';
-        document.getElementById('lb-orders-'+m.init).value=t.orders||'';
+        const idx=TEAM.findIndex(x=>x.name===t.name);
+        if(idx<0) return;
+        document.getElementById('lb-rev-'+idx).value=t.revenue||'';
+        document.getElementById('lb-wins-'+idx).value=t.wins||'';
+        document.getElementById('lb-orders-'+idx).value=t.orders||'';
       });
+
     } else {
       document.getElementById('lb-current').innerHTML='<div class="empty">No data yet</div>';
     }
@@ -602,12 +653,13 @@ async function loadCurrentLb() {
 async function saveLeaderboard() {
   const weekLabel=document.getElementById('lb-week-input').value.trim();
   if (!weekLabel) { showToast('Enter week ending date','err'); return; }
-  const teams=TEAM.map(m=>({
+  const teams=TEAM.map((m,idx)=>({
     name:   m.name,
     role:   m.role,
-    revenue:parseInt(document.getElementById('lb-rev-'+m.init).value)||0,
-    wins:   parseInt(document.getElementById('lb-wins-'+m.init).value)||0,
-    orders: parseInt(document.getElementById('lb-orders-'+m.init).value)||0,
+    group:  lbGroup(m),
+    revenue:parseInt(document.getElementById('lb-rev-'+idx).value)||0,
+    wins:   parseInt(document.getElementById('lb-wins-'+idx).value)||0,
+    orders: parseInt(document.getElementById('lb-orders-'+idx).value)||0,
   }));
   try {
     const r=await fetch(`${RELAY_URL}/leaderboard`,{method:'POST',headers:authHeaders(),body:JSON.stringify({teams,weekLabel})});
