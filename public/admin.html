@@ -181,7 +181,7 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
     </div>
   </div>
 
-  <!-- Tabs (only shown if user has leaderboard access) -->
+  <!-- Tabs (Leaderboard tab only for users with leaderboard access) -->
   <div class="tabs" id="tabs" style="display:none">
     <div class="tab active" id="tab-trigger" onclick="switchTab('trigger')">🎯 Trigger</div>
     <div class="tab" id="tab-lb" onclick="switchTab('lb')">🏆 Leaderboard</div>
@@ -258,8 +258,9 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
 
   <!-- HISTORY TAB -->
   <div id="pane-hist" class="body" style="display:none">
-    <div class="section-lbl">Today's Triggers</div>
-    <div class="card" id="hist-wrap"><div class="empty">No triggers fired yet today</div></div>
+    <div class="section-lbl">Recent entries (last 3 days)</div>
+    <div style="font-size:.65rem;color:var(--dim);margin:-4px 0 8px">Wrong entry? Tap 🗑 — it disappears from the TV and today's / this month's totals are corrected.</div>
+    <div class="card" id="hist-wrap"><div class="empty">Loading…</div></div>
   </div>
 </div>
 
@@ -464,7 +465,8 @@ function login(user) {
   selectedType = currentUser.perms[0];
 
   // Show tabs only if leaderboard access
-  document.getElementById('tabs').style.display = currentUser.lb ? 'flex' : 'none';
+  document.getElementById('tabs').style.display = 'flex';
+  document.getElementById('tab-lb').style.display = currentUser.lb ? '' : 'none';
 
   renderRoleBanner();
   renderQuickRow();
@@ -494,7 +496,7 @@ function switchTab(tab) {
     document.getElementById('pane-'+t).style.display=t===tab?'block':'none';
     document.getElementById('tab-'+t)?.classList.toggle('active',t===tab);
   });
-  if(tab==='hist') renderHistory();
+  if(tab==='hist') loadHistory();
 }
 
 /* ── ROLE BANNER ─────────────────────────────────────────────────── */
@@ -729,24 +731,43 @@ async function deleteWeek(){
   }catch{ showToast('Could not delete — check connection','err'); }
 }
 
-/* ── HISTORY ─────────────────────────────────────────────────────── */
-function addHistory(type,person,product,client,location,amount) {
-  const time=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
-  history.unshift({type,person,product,client,location,amount,time,by:currentUser?.name||''});
-  if(history.length>30) history.pop();
-  sessionStorage.setItem('ww_hist',JSON.stringify(history));
-  if(currentTab==='hist') renderHistory();
+/* ── HISTORY (server-side, shared by everyone; entries can be deleted) ── */
+let serverHistory = [];
+function addHistory(){ loadHistory(); }
+async function loadHistory(){
+  try{
+    const r=await fetch(RELAY_URL+'/activity',{headers:authHeaders()});
+    if(handleAuthError(r)) return;
+    serverHistory = r.ok ? await r.json() : [];
+  }catch{ serverHistory=[]; }
+  renderHistory();
 }
 function renderHistory() {
   const w=document.getElementById('hist-wrap');
-  if(!history.length){ w.innerHTML='<div class="empty">No triggers fired yet</div>'; return; }
-  w.innerHTML=history.map(h=>`
+  if(!serverHistory.length){ w.innerHTML='<div class="empty">No entries in the last 3 days</div>'; return; }
+  w.innerHTML=serverHistory.map(h=>{
+    const d=new Date(h.ts);
+    const when=d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+    return `
     <div class="hist-item">
-      <div class="hdot ${h.type}"></div>
-      <div class="hinfo"><div class="hname">${h.person} · ${h.product||'—'}</div><div class="hsub">${h.client}${h.location?' · '+h.location:''} · ${TYPE_CFG[h.type]?.label||h.type}</div></div>
+      <div class="hdot ${h.triggerType}"></div>
+      <div class="hinfo"><div class="hname">${h.person} · ${h.product||'—'}</div><div class="hsub">${[h.client,h.location,TYPE_CFG[h.triggerType]?.label||h.triggerType].filter(Boolean).join(' · ')}</div></div>
       <div class="hval">${h.amount}</div>
-      <div class="htime">${h.time}${h.by?'<br>'+h.by:''}</div>
-    </div>`).join('');
+      <div class="htime">${when}<br>${h.by||''}</div>
+      ${h.canDelete?`<button onclick="deleteEntry('${h.id}')" title="Delete this entry" style="background:none;border:1px solid rgba(224,122,106,.5);color:#e07a6a;border-radius:8px;padding:4px 8px;margin-left:6px;cursor:pointer">🗑</button>`:''}
+    </div>`;}).join('');
+}
+async function deleteEntry(id){
+  const h=serverHistory.find(x=>x.id===id); if(!h) return;
+  if(!confirm(`Delete this entry?\n\n${TYPE_CFG[h.triggerType]?.label||h.triggerType}: ${h.person} · ${h.amount}\n\nIt will be removed from the TV and the totals will be corrected.`)) return;
+  try{
+    const r=await fetch(RELAY_URL+'/activity/delete',{method:'POST',headers:authHeaders(),body:JSON.stringify({id})});
+    if(handleAuthError(r)) return;
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error||'Could not delete','err'); return; }
+    showToast('🗑 Entry deleted — TV and totals updated','ok');
+    loadHistory();
+  }catch{ showToast('Could not delete — check connection','err'); }
 }
 
 /* ── TOAST ───────────────────────────────────────────────────────── */
