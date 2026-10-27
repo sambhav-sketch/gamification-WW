@@ -190,7 +190,7 @@ function sheetSaveState(name, valueFn) {
 }
 
 async function sheetLoadState() {
-  if (!SHEET_URL || !SHEET_KEY) { console.log('[SHEET] Not configured — using local files only'); return; }
+  if (!SHEET_URL || !SHEET_KEY) { console.log('[SHEET] Not configured — using local files only'); checkDealEvents(); return; }
   try {
     const r = await sheetRequest('GET', `${SHEET_URL}?key=${encodeURIComponent(SHEET_KEY)}`);
     if (!r || !r.ok) throw new Error((r && r.error) || 'bad reply');
@@ -199,6 +199,7 @@ async function sheetLoadState() {
     rebuildLeaderboard();
     if (st.monthly && st.monthly.monthKey === currentMonthKey()) monthlyData = st.monthly;
     if (st.today && st.today.dateKey === todayDateKey()) todayStats = st.today;
+    if (st.watch && +st.watch.lastDealId > 0) { lastDealId = +st.watch.lastDealId; console.log('[WATCH] Resuming after deal #' + lastDealId); }
     console.log('[SHEET] State restored from Google Sheet');
     broadcast({ type: 'leaderboard', data: leaderboardData });
     broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
@@ -206,6 +207,7 @@ async function sheetLoadState() {
   } catch (e) {
     console.log('[SHEET] Could not load state:', e.message);
   }
+  checkDealEvents();
 }
 
 // ── LEADERBOARD STORE ─────────────────────────────────────────────────────────
@@ -378,7 +380,9 @@ let tickerCache = {
 function bitrixFetch(method, params) {
   return new Promise((resolve, reject) => {
     if (!BITRIX_URL) return resolve(null);
-    const qs     = new URLSearchParams(params).toString();
+    const usp    = new URLSearchParams();
+    for (const [k, v] of Object.entries(params || {})) (Array.isArray(v) ? v : [v]).forEach(x => usp.append(k, x));
+    const qs     = usp.toString();
     const url    = `${BITRIX_URL}${method}?${qs}`;
     const req    = https.get(url, res => {
       let data = '';
@@ -471,6 +475,30 @@ function istDateStr() {
   return new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
+// Product category for a deal: the UF_CRM_PRODUCT field (list IDs resolved to names), else pipeline name
+let productItems = null, pipelineNames = null;
+async function loadDealMeta() {
+  if (productItems && pipelineNames) return;
+  try {
+    const f = await bitrixFetch('crm.deal.fields', {});
+    const fld = f?.result?.UF_CRM_PRODUCT;
+    productItems = {};
+    (fld?.items || []).forEach(it => { productItems[String(it.ID)] = it.VALUE; });
+  } catch (e) { productItems = {}; }
+  try {
+    const c = await bitrixFetch('crm.dealcategory.list', {});
+    pipelineNames = { '0': 'General' };
+    (c?.result || []).forEach(x => { pipelineNames[String(x.ID)] = x.NAME; });
+  } catch (e) { pipelineNames = {}; }
+}
+function productCategory(d) {
+  let v = d.UF_CRM_PRODUCT;
+  if (Array.isArray(v)) v = v.map(x => (productItems && productItems[String(x)]) || x).filter(Boolean).join(', ');
+  else if (v !== undefined && v !== null && v !== '' && productItems && productItems[String(v)]) v = productItems[String(v)];
+  if (v && String(v).trim() && !/^\d+$/.test(String(v))) return String(v).trim();
+  return '';
+}
+
 async function checkDealEvents() {
   if (!BITRIX_URL || watchBusy) return;
   watchBusy = true;
@@ -480,26 +508,32 @@ async function checkDealEvents() {
     // NEW DEALS
     const created = await bitrixFetch('crm.deal.list', {
       'filter[>ID]': first ? 0 : lastDealId,
-      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','COMPANY_ID'],
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','COMPANY_ID','CATEGORY_ID','DATE_CREATE','UF_CRM_PRODUCT'],
       'order[ID]': first ? 'DESC' : 'ASC',
       'start': 0,
     });
     const newDeals = created?.result || [];
     if (first) {
       lastDealId = newDeals.length ? Math.max(...newDeals.map(d => +d.ID)) : 0;
-    } else {
+      sheetSaveState('watch', () => ({ lastDealId }));
+    } else if (newDeals.length) {
+      await loadDealMeta();
       for (const d of newDeals) {
         lastDealId = Math.max(lastDealId, +d.ID);
-        const amount = parseFloat(d.OPPORTUNITY || 0);
-        const person = USER_MAP[d.ASSIGNED_BY_ID] || 'Sales Team';
-        console.log(`[WATCH] New deal #${d.ID} ${d.TITLE} ${amount} by ${person}`);
+        const created = Date.parse(d.DATE_CREATE || '') || Date.now();
+        if (Date.now() - created > 3 * 3600 * 1000) continue;     // old deal found after a long sleep — don't announce
+        const amount   = parseFloat(d.OPPORTUNITY || 0);
+        const person   = USER_MAP[d.ASSIGNED_BY_ID] || 'Sales Team';
+        const category = productCategory(d) || (pipelineNames && pipelineNames[String(d.CATEGORY_ID || 0)]) || '';
+        console.log(`[WATCH] New deal #${d.ID} ${d.TITLE} ${amount} [${category}] by ${person}`);
         broadcast({
           type: 'celebration', triggerType: 'deal', tier: getTier(amount),
-          headline: 'NEW DEAL!', subtext: 'Deal Created in CRM',
-          person, product: d.TITLE || 'New Deal', client: d.TITLE || '', location: '',
+          headline: 'NEW DEAL ALERT', subtext: 'New deal created in CRM',
+          person, product: category || d.TITLE || 'New Deal', category, client: d.TITLE || '', location: '',
           amount: amount ? formatAmount(amount) : '—', eventType: 'Deal Created',
         });
       }
+      sheetSaveState('watch', () => ({ lastDealId }));
     }
 
     // WON DEALS (closed today, success stage)
@@ -534,7 +568,7 @@ async function checkDealEvents() {
     watchBusy = false;
   }
 }
-checkDealEvents();
+// first check runs after the Sheet state is loaded (see sheetLoadState)
 setInterval(checkDealEvents, WATCH_INTERVAL);
 
 // ── SALESPERSON PHOTOS ────────────────────────────────────────────────────────
