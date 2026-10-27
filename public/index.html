@@ -75,7 +75,9 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
 .lb-header { flex-shrink:0; margin-bottom:9px; }
 .lb-title { font-family:'Barlow Condensed',sans-serif; font-size:.56rem; letter-spacing:4px; text-transform:uppercase; color:var(--gold); }
 .lb-week  { font-size:.5rem; color:var(--dim); margin-top:2px; }
-.lb-list  { flex:1; display:flex; flex-direction:column; gap:5px; overflow:hidden; }
+.lb-list  { display:flex; flex-direction:column; gap:5px; overflow:hidden; }
+.lb-av img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.lb-av.big { width:34px; height:34px; font-size:.75rem; }
 .lb-row { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; display:flex; align-items:center; gap:8px; position:relative; overflow:hidden; transition:border-color .5s,background .5s; }
 .lb-row.rank-1 { border-color:rgba(201,168,76,.5); }
 .lb-row.rank-2 { border-color:rgba(192,123,62,.35); }
@@ -91,6 +93,7 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
 .lb-name { font-family:'Barlow Condensed',sans-serif; font-size:.78rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .lb-role { font-size:.52rem; color:var(--dim); margin-top:1px; }
 .lb-stats { text-align:right; flex-shrink:0; }
+.lb-mult { font-size:.6rem; font-weight:700; color:var(--gold); margin-left:2px; }
 .lb-rev  { font-family:'Barlow Condensed',sans-serif; font-size:.88rem; font-weight:800; color:var(--gold-l); }
 .lb-wins { font-size:.5rem; color:var(--dim2); }
 .lb-bar  { position:absolute; bottom:0; left:0; height:2px; background:var(--gold); transition:width 1s ease; opacity:.35; }
@@ -133,6 +136,51 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
 .tier-done  .cel-tier-badge,.tier-done  .cel-icon,.tier-done  .cel-headline,.tier-done  .cel-amount-big,.tier-done  .cel-spotlight-name { color:var(--done); }
 .tier-bomb  .cel-tier-badge,.tier-bomb  .cel-icon,.tier-bomb  .cel-headline,.tier-bomb  .cel-amount-big,.tier-bomb  .cel-spotlight-name { color:var(--bomb); }
 .tier-super .cel-tier-badge,.tier-super .cel-icon,.tier-super .cel-headline,.tier-super .cel-amount-big,.tier-super .cel-spotlight-name { color:var(--super); }
+
+/* Salesperson photo */
+.cel-photo { width:170px; height:170px; border-radius:50%; object-fit:cover; border:5px solid currentColor; box-shadow:0 0 60px currentColor; margin-bottom:14px; background:var(--mid,#1c2a22); display:flex; align-items:center; justify-content:center; font-family:'Barlow Condensed',sans-serif; font-size:4rem; font-weight:900; animation:photoPop .7s cubic-bezier(.2,1.6,.4,1) both; }
+.cel-photo-wrap { color:var(--gold); }
+.tier-spark .cel-photo-wrap{color:var(--spark)} .tier-done .cel-photo-wrap{color:var(--done)} .tier-bomb .cel-photo-wrap{color:var(--bomb)} .tier-super .cel-photo-wrap{color:var(--super)}
+.cel-sp-photo { width:300px; height:300px; margin-bottom:22px; font-size:7rem; border-width:7px; }
+.tier-bomb .cel-photo, .tier-super .cel-photo { animation:photoPop .7s cubic-bezier(.2,1.6,.4,1) both, photoPulse 1.2s ease-in-out .7s infinite; }
+@keyframes photoPop{0%{transform:scale(0) rotate(-20deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+@keyframes photoPulse{0%,100%{box-shadow:0 0 40px currentColor}50%{box-shadow:0 0 110px currentColor}}
+.tier-bomb.show .cel-phase1, .tier-super.show .cel-phase1 { animation:shake .5s ease-in-out 2; }
+@keyframes shake{0%,100%{transform:translate(0,0)}20%{transform:translate(-14px,6px)}40%{transform:translate(12px,-8px)}60%{transform:translate(-8px,10px)}80%{transform:translate(8px,-4px)}}
+#celebration.flash::after { content:''; position:absolute; inset:0; background:#fff; animation:flash .6s ease-out forwards; pointer-events:none; }
+@keyframes flash{0%{opacity:.85}100%{opacity:0}}
+
+/* Sound gate + toggle */
+#sound-gate { position:fixed; inset:0; z-index:200; background:rgba(8,13,10,.92); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; cursor:pointer; font-family:'Barlow Condensed',sans-serif; color:var(--cream); text-align:center; }
+#sound-gate .sg-icon { font-size:5rem; }
+#sound-gate .sg-title { font-size:2.6rem; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
+#sound-gate .sg-sub { font-family:'Barlow',sans-serif; font-size:.9rem; color:var(--dim2,#9aa); letter-spacing:1px; }
+#sound-btn { background:none; border:1px solid var(--border); color:var(--gold); border-radius:20px; padding:3px 12px; font-size:.6rem; letter-spacing:2px; cursor:pointer; font-family:'Barlow Condensed',sans-serif; }
+
+/* Top-performer banner: slides across the screen every ~90 s, one person at a time */
+#star-banner { position:fixed; left:0; right:0; bottom:64px; z-index:90; height:170px; pointer-events:none; overflow:hidden; }
+#star-banner .sb-inner { position:absolute; top:0; bottom:0; left:0; right:0; display:flex; align-items:center; gap:28px; padding:0 56px;
+  background:linear-gradient(90deg, rgba(13,21,16,.0) 0%, rgba(13,21,16,.94) 8%, rgba(28,42,34,.97) 50%, rgba(13,21,16,.94) 92%, rgba(13,21,16,0) 100%);
+  border-top:2px solid var(--sb-col); border-bottom:2px solid var(--sb-col); box-shadow:0 0 60px rgba(0,0,0,.6);
+  transform:translateX(110%); }
+#star-banner.run .sb-inner { animation:sbMove 11s cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes sbMove { 0%{transform:translateX(110%)} 12%{transform:translateX(0)} 88%{transform:translateX(0)} 100%{transform:translateX(-110%)} }
+.sb-rank { font-family:'Barlow Condensed',sans-serif; font-size:6rem; font-weight:900; line-height:1; color:var(--sb-col); min-width:120px; text-align:center; }
+.sb-rank small { display:block; font-size:.9rem; letter-spacing:4px; margin-top:2px; }
+.sb-photo { width:132px; height:132px; border-radius:50%; border:5px solid var(--sb-col); box-shadow:0 0 40px var(--sb-col); overflow:hidden; flex-shrink:0; background:var(--forest,#1c2a22); display:flex; align-items:center; justify-content:center; font-family:'Barlow Condensed',sans-serif; font-size:3.2rem; font-weight:900; color:var(--cream); }
+.sb-photo img { width:100%; height:100%; object-fit:cover; }
+.sb-text { flex:1; min-width:0; }
+.sb-kicker { font-family:'Barlow Condensed',sans-serif; font-size:1rem; letter-spacing:6px; text-transform:uppercase; color:var(--sb-col); }
+.sb-line { font-family:'Barlow Condensed',sans-serif; font-size:3.6rem; font-weight:900; line-height:1.05; text-transform:uppercase; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sb-line b { color:var(--sb-col); }
+.sb-sub { font-size:.85rem; letter-spacing:3px; text-transform:uppercase; color:var(--dim2,#9aa); margin-top:4px; }
+.sb-stats { display:flex; gap:34px; flex-shrink:0; }
+.sb-stat { text-align:center; }
+.sb-val { font-family:'Barlow Condensed',sans-serif; font-size:2.6rem; font-weight:900; line-height:1; color:var(--sb-col); }
+.sb-lbl { font-size:.55rem; letter-spacing:3px; text-transform:uppercase; color:var(--dim); margin-top:4px; }
+.sb-shine { position:absolute; top:0; bottom:0; width:160px; left:-200px; background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent); }
+#star-banner.run .sb-shine { animation:sbShine 2.2s ease-in-out 1.6s 2; }
+@keyframes sbShine { 0%{left:-200px} 100%{left:110%} }
 
 /* Confetti */
 .confetti-piece { position:absolute; width:10px; height:10px; border-radius:2px; animation:confettiFall 3s ease-in forwards; }
@@ -194,10 +242,11 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="lb-header">
-      <div class="lb-title">🏆 &nbsp;LEADERBOARD</div>
+      <div class="lb-title">🏆 &nbsp;TEAM LEADERBOARD</div>
       <div class="lb-week" id="lb-week">Updated by Manish every Monday</div>
     </div>
     <div class="lb-list" id="lb-list"></div>
+
   </aside>
 
   <!-- FOOTER -->
@@ -205,6 +254,7 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
     <div class="footer-brand"><img src="ww-logo-cream.png" alt="Wonderwoods" style="height:11px;display:block;opacity:.7"></div>
     <span>Sales Floor · Live Display</span>
     <div class="footer-spacer"></div>
+    <button id="sound-btn" onclick="toggleSound()">🔊 SOUND ON</button>
     <span id="countdown-msg" style="color:var(--gold-l);font-family:'Barlow Condensed',sans-serif;font-size:.8rem;font-weight:700;letter-spacing:2px;display:none;animation:blink 1.5s infinite;"></span>
     <span id="ticker-refresh">Tickers refresh every 5 min</span>
     <span id="date-str"></span>
@@ -212,10 +262,21 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
 
 </div>
 
+<!-- SOUND GATE: browsers need one click before a page may play sound -->
+<div id="sound-gate" onclick="enableSound()">
+  <div class="sg-icon">🔊</div>
+  <div class="sg-title">Tap to start the sales floor</div>
+  <div class="sg-sub">Turns on sound for deal alerts · press M anytime to mute</div>
+</div>
+
+<!-- TOP PERFORMER BANNER -->
+<div id="star-banner"><div class="sb-inner" id="sb-inner"></div></div>
+
 <!-- CELEBRATION -->
 <div id="celebration">
   <div class="cel-bg"></div>
   <div class="cel-phase1" id="cel-p1">
+    <div class="cel-photo-wrap" id="cel-photo-wrap"></div>
     <div class="cel-tier-badge" id="cel-tier-badge">DEAL DONE</div>
     <div class="cel-icon" id="cel-icon">🔥</div>
     <div class="cel-headline" id="cel-headline">ORDER LOCKED!</div>
@@ -233,12 +294,13 @@ html, body { background:var(--forest); color:var(--cream); font-family:'Barlow',
     </div>
   </div>
   <div class="cel-phase2" id="cel-p2">
+    <div class="cel-photo-wrap" id="cel-sp-photo-wrap"></div>
     <div class="cel-spotlight-name" id="cel-sp-name">SAMARTH</div>
     <div class="cel-spotlight-role" id="cel-sp-role">South &amp; North</div>
     <div class="cel-spotlight-stats">
       <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-wins">0</div><div class="cel-sp-lbl">Month Wins</div></div>
       <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-rev">₹0</div><div class="cel-sp-lbl">Month Revenue</div></div>
-      <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-rank">#1</div><div class="cel-sp-lbl">Leaderboard Rank</div></div>
+      <div class="cel-sp-stat"><div class="cel-sp-val" id="cel-sp-rank">#1</div><div class="cel-sp-lbl" id="cel-sp-rank-lbl">Salesperson Rank</div></div>
     </div>
   </div>
 </div>
@@ -267,7 +329,51 @@ const TIER_GLOW = {
 /* ── SESSION STATE ───────────────────────────────────────────────────────── */
 // todayStats and monthStats are now server-driven — no sessionStorage for counts
 let feedItems = [];
+let monthStats = {};   // filled from leaderboard data (wins / revenue per person)
 let lbData    = null;
+
+/* ── LEADERBOARD RULES ───────────────────────────────────────────────────── */
+// Team leaderboard: individual numbers are summed per team.
+// Retail (B2C) and Perscape (A&D / direct projects) are harder sales with higher margins,
+// so their TEAM revenue counts 2×. Individual figures always stay actual.
+const LB_TEAMS = [
+  { key:'north',    label:'North & South',  sub:"Samarth's team",  init:'NS', mult:1 },
+  { key:'delhi',    label:'Delhi B2B',      sub:"Abhishek's team", init:'DL', mult:1 },
+  { key:'west',     label:'West & Central', sub:"Vishal's team",   init:'WC', mult:1 },
+  { key:'b2c',      label:'Retail',         sub:"Geet's team",     init:'RT', mult:2 },
+  { key:'perscape', label:'Perscape',       sub:'A&D Projects',    init:'PS', mult:2 },
+];
+const LB_PERSON_GROUP = {
+  'Geet Rawat':'b2c','Pooja':'b2c','Ritu Dhuper':'b2c','Rishabh':'b2c','Prashant':'b2c',
+  'Vishal Poddar':'west','Somender':'west','Kishan':'west','Umesh':'west','Shubham':'west','Priyanshi':'west',
+  'Abhishek Wilson':'delhi','Ashwani Kumar':'delhi','Janak':'delhi','Sooraj':'delhi','Aarif':'delhi',
+  'Samarth Khandelwal':'north','Mansi':'north','Hemant':'north','Waseem':'north','Abhishek Sharma':'north','Ayush':'north',
+  'Anurag Khandelwal':'perscape','Divya':'perscape','Krishna':'perscape','Sampada':'perscape','Vishal Choudhary':'perscape','Prachi':'perscape','Rahul':'perscape',
+};
+// Anurag (partner) is never shown by name — his entries appear as the Perscape team.
+const LB_ALIAS = { 'Anurag Khandelwal': { label:'Perscape', init:'PS', role:'A&D Projects' } };
+function lbGroup(p){
+  if(p.group) return p.group;
+  if(LB_PERSON_GROUP[p.name]) return LB_PERSON_GROUP[p.name];
+  const r=(p.role||'').toLowerCase();
+  if(/perscape|a&d/.test(r)) return 'perscape';
+  if(/retail|b2c/.test(r)) return 'b2c';
+  if(/west|central/.test(r)) return 'west';
+  if(/delhi/.test(r)) return 'delhi';
+  if(/north|south/.test(r)) return 'north';
+  return null;
+}
+function lbBuild(data){
+  const people=(data?.teams||[]).map(p=>({...p, group:lbGroup(p), revenue:+p.revenue||0, wins:+p.wins||0, orders:+p.orders||0}));
+  const teams=LB_TEAMS.map(t=>{
+    const m=people.filter(p=>p.group===t.key);
+    const revenue=m.reduce((s,p)=>s+p.revenue,0);
+    return {...t, revenue, weighted:revenue*t.mult, wins:m.reduce((s,p)=>s+p.wins,0), orders:m.reduce((s,p)=>s+p.orders,0)};
+  }).sort((a,b)=>b.weighted-a.weighted);
+  const ranked=people.filter(p=>!LB_ALIAS[p.name] && p.revenue>0).sort((a,b)=>b.revenue-a.revenue);
+  return { teams, people:ranked, hasData:people.some(p=>p.revenue||p.wins||p.orders) };
+}
+function lbSlug(n){ return String(n||'').replace(/[^A-Za-z0-9]+/g,'-'); }
 
 /* ── FORMAT ──────────────────────────────────────────────────────────────── */
 function fmt(v) {
@@ -334,30 +440,31 @@ function renderTicker(d) {
 fetch(SERVER_URL+'/ticker').then(r=>r.json()).then(renderTicker).catch(()=>{});
 
 /* ── LEADERBOARD ─────────────────────────────────────────────────────────── */
-function renderLeaderboard(data, highlight) {
+function renderLeaderboard(data) {
   lbData = data;
-  const list = document.getElementById('lb-list');
-  if (!data?.teams?.length) {
-    list.innerHTML='<div style="color:var(--dim);font-size:.65rem;text-align:center;padding:18px 0">Manish updates this<br>every Monday</div>';
-    document.getElementById('lb-week').textContent='Pending first update';
+  monthStats = {};
+  (data?.teams||[]).forEach(t=>{ monthStats[t.name]={wins:+t.wins||0,rev:+t.revenue||0}; }); /* actual, for the spotlight */
+  const wk=document.getElementById('lb-week');
+  const list=document.getElementById('lb-list');
+  const lb=lbBuild(data);
+  if(!lb.hasData){
+    list.innerHTML='<div style="color:var(--dim);font-size:.65rem;text-align:center;padding:18px 0">Accounts updates this<br>every Monday</div>';
+    topPeople=[];
+    wk.textContent='Pending first update';
     return;
   }
-  const sorted=[...data.teams].sort((a,b)=>(b.revenue||0)-(a.revenue||0));
-  const maxRev=sorted[0]?.revenue||1;
-  document.getElementById('lb-week').textContent=data.weekLabel?'W/e '+data.weekLabel+' · Updated by '+(data.updatedBy||'Manish'):'Current standings';
-  list.innerHTML=sorted.map((t,i)=>{
-    const init=t.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    const bar=Math.round(((t.revenue||0)/maxRev)*100);
-    const hl=highlight&&t.name===highlight?' highlight':'';
-    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
-    return `<div class="lb-row rank-${i+1}${hl}" id="lb-${t.name.replace(/\s+/g,'-')}">
-      <div class="lb-rank">${medal}</div>
-      <div class="lb-av">${init}</div>
-      <div class="lb-info"><div class="lb-name">${t.name.split(' ')[0]}</div><div class="lb-role">${t.role||''}</div></div>
-      <div class="lb-stats"><div class="lb-rev">${t.revenue?fmt(t.revenue):'—'}</div><div class="lb-wins">${t.wins||0}W · ${t.orders||0}O</div></div>
-      <div class="lb-bar" style="width:${bar}%"></div>
-    </div>`;
-  }).join('');
+  wk.textContent=(data.weekLabel?'W/e '+data.weekLabel+' · Updated by '+(data.updatedBy||'Accounts'):'Current standings')+' · Retail & Perscape count 2×';
+  const maxRev=lb.teams[0]?.weighted||1;
+  const medal=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
+  list.innerHTML=lb.teams.map((t,i)=>`
+    <div class="lb-row rank-${i+1}" id="lb-team-${t.key}">
+      <div class="lb-rank">${medal(i)}</div>
+      <div class="lb-av">${t.init}</div>
+      <div class="lb-info"><div class="lb-name">${t.label}</div><div class="lb-role">${t.sub}</div></div>
+      <div class="lb-stats"><div class="lb-rev">${t.weighted?fmt(t.weighted):'—'}${t.mult>1?' <span class="lb-mult">(2×)</span>':''}</div><div class="lb-wins">${t.wins}W · ${t.orders}O</div></div>
+      <div class="lb-bar" style="width:${Math.round(t.weighted/maxRev*100)}%"></div>
+    </div>`).join('');
+  topPeople = lb.people.slice(0,3);   // feeds the rotating banner
 }
 fetch(SERVER_URL+'/leaderboard').then(r=>r.json()).then(d=>renderLeaderboard(d)).catch(()=>renderLeaderboard(null));
 fetch(SERVER_URL+'/today').then(r=>r.json()).then(d=>renderToday(d)).catch(()=>{});
@@ -388,7 +495,7 @@ function addFeed(evt) {
       <div class="fi-tier">${f.t.icon}</div>
       <div class="fi-info">
         <div class="fi-head">${f.evt.person} · ${f.evt.product||f.evt.client||'—'}</div>
-        <div class="fi-sub">${f.evt.client}${f.evt.location?' · '+f.evt.location:''} · ${f.evt.subtext||''}</div>
+        <div class="fi-sub">${[f.evt.client,f.evt.location,f.evt.subtext].filter(Boolean).join(' · ')}</div>
       </div>
       <div class="fi-amount ${f.t.cls}">${f.evt.amount}</div>
       <div class="fi-time">${f.time}</div>
@@ -399,8 +506,27 @@ function addFeed(evt) {
 const PHASE1=5000, PHASE2=5000;
 let celTimer=null;
 
-function celebrate(evt) {
+/* Queue so back-to-back events each get their moment */
+const celQueue=[]; let celBusy=false;
+function celebrate(evt){ celQueue.push(evt); if(!celBusy) nextCelebration(); }
+function nextCelebration(){
+  const evt=celQueue.shift();
+  if(!evt){ celBusy=false; return; }
+  celBusy=true;
+  showCelebration(evt);
+}
+
+function photoHTML(person, cls){
+  const name=person||'';
+  const init=name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'WW';
+  const src=SERVER_URL+'/photo/'+encodeURIComponent(name);
+  return `<div class="cel-photo ${cls||''}" data-init="${init}"><img src="${src}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.parentNode.textContent=this.parentNode.dataset.init"></div>`;
+}
+
+function showCelebration(evt) {
+  if(LB_ALIAS[evt.person]) evt={...evt, person:LB_ALIAS[evt.person].label, _lbName:evt.person};
   const tier=evt.tier||{cls:'tier-done',icon:'🔥',name:'DEAL DONE'};
+  const isNewDeal = evt.triggerType==='deal';
   const cel=document.getElementById('celebration');
   const p1=document.getElementById('cel-p1'), p2=document.getElementById('cel-p2');
   clearTimeout(celTimer);
@@ -412,8 +538,19 @@ function celebrate(evt) {
   document.querySelector('.cel-bg').style.background=
     `radial-gradient(ellipse at 50% 50%, ${TIER_GLOW[tier.cls]||'rgba(201,168,76,0.18)'} 0%, transparent 70%)`;
 
+  // Photos
+  document.getElementById('cel-photo-wrap').innerHTML    = evt.person&&evt.person!=='Sales Team' ? photoHTML(evt.person) : '';
+  document.getElementById('cel-sp-photo-wrap').innerHTML = evt.person&&evt.person!=='Sales Team' ? photoHTML(evt.person,'cel-sp-photo') : '';
+
+  // Sound + voice
+  playEventSound(evt, tier);
+
+  // White flash for the big ones
+  cel.classList.remove('flash');
+  if(tier.cls==='tier-bomb'||tier.cls==='tier-super'){ void cel.offsetWidth; cel.classList.add('flash'); }
+
   // Phase 1 content
-  document.getElementById('cel-tier-badge').textContent = tier.name;
+  document.getElementById('cel-tier-badge').textContent = isNewDeal ? 'NEW DEAL' : tier.name;
   document.getElementById('cel-icon').textContent       = tier.icon;
   document.getElementById('cel-headline').textContent   = evt.headline||tier.name;
   document.getElementById('cel-subtext').textContent    = evt.subtext||'';
@@ -425,19 +562,22 @@ function celebrate(evt) {
 
   // Phase 2 spotlight
   const fname=(evt.person||'').split(' ')[0].toUpperCase();
-  const tm=TEAM.find(t=>t.name===evt.person)||{};
-  const ms=monthStats[evt.person]||{wins:0,rev:0};
-  const sorted=lbData?[...lbData.teams].sort((a,b)=>(b.revenue||0)-(a.revenue||0)):[];
-  const rank=sorted.findIndex(t=>t.name===evt.person)+1;
+  const lbName=evt._lbName||evt.person;
+  const tm=TEAM.find(t=>t.name===lbName)||(lbData?.teams||[]).find(t=>t.name===lbName)||{};
+  const ms=monthStats[lbName]||{wins:0,rev:0};
+  const lbb=lbBuild(lbData);
+  const myGroup=lbGroup({name:lbName, role:tm.role});
+  const rank = LB_ALIAS[lbName] ? lbb.teams.findIndex(t=>t.key==='perscape')+1 : lbb.people.findIndex(p=>p.name===lbName)+1;
   document.getElementById('cel-sp-name').textContent = fname;
-  document.getElementById('cel-sp-role').textContent = tm.role||'';
+  document.getElementById('cel-sp-role').textContent = (LB_ALIAS[lbName]?.role)||tm.role||'';
   document.getElementById('cel-sp-wins').textContent = ms.wins||0;
   document.getElementById('cel-sp-rev').textContent  = fmt(ms.rev||0);
   document.getElementById('cel-sp-rank').textContent = rank?'#'+rank:'—';
+  document.getElementById('cel-sp-rank-lbl').textContent = LB_ALIAS[lbName] ? 'Team Rank' : 'Salesperson Rank';
 
   // Confetti for SUPER
   document.querySelectorAll('.confetti-piece').forEach(c=>c.remove());
-  if(tier.cls==='tier-super') {
+  if(tier.cls==='tier-super' || tier.cls==='tier-bomb') {
     const cols=['#E8C878','#C9A84C','#F5EFE0','#8AA8C8','#C07B3E'];
     for(let i=0;i<60;i++){
       const c=document.createElement('div'); c.className='confetti-piece';
@@ -448,21 +588,184 @@ function celebrate(evt) {
 
   p1.style.opacity='1'; p2.style.opacity='0';
 
+  // Deal created = shorter, single phase
+  const P1 = isNewDeal ? 6000 : PHASE1;
+  const P2 = isNewDeal ? 0    : PHASE2;
+  if(isNewDeal){
+    celTimer=setTimeout(()=>{ cel.className=''; setTimeout(nextCelebration,600); },P1);
+    return;
+  }
+
   celTimer=setTimeout(()=>{
     p1.style.opacity='0';
     setTimeout(()=>{
       p2.style.opacity='1';
       // Highlight leaderboard
       document.querySelectorAll('.lb-row.highlight').forEach(r=>r.classList.remove('highlight'));
-      const lbEl=document.getElementById('lb-'+(evt.person||'').replace(/\s+/g,'-'));
-      if(lbEl) lbEl.classList.add('highlight');
+      const tEl=document.getElementById('lb-team-'+myGroup); if(tEl) tEl.classList.add('highlight');
     },500);
     celTimer=setTimeout(()=>{
       cel.className='';
       document.querySelectorAll('.lb-row.highlight').forEach(r=>r.classList.remove('highlight'));
       document.querySelectorAll('.confetti-piece').forEach(c=>c.remove());
-    },PHASE2);
-  },PHASE1);
+      setTimeout(nextCelebration,600);
+    },P2);
+  },P1);
+}
+
+/* ── TOP PERFORMER BANNER ─────────────────────────────────────────────────── */
+// Every BANNER_EVERY ms the next of the top 3 salespeople (actual revenue) slides across the screen:
+// #1 → #2 → #3 → #1 … Skipped while a celebration is on screen.
+const BANNER_EVERY = 90 * 1000;
+let topPeople = [], bannerIdx = 0;
+const BANNER_STYLE = [
+  { col:'#E8C878', kicker:'🥇 Number one this month', verb:'is leading with' },
+  { col:'#C9D3DC', kicker:'🥈 Number two this month', verb:'is chasing hard with' },
+  { col:'#C07B3E', kicker:'🥉 Number three this month', verb:'is in the top 3 with' },
+];
+function showStarBanner(i){
+  const p=topPeople[i]; if(!p) return false;
+  const st=BANNER_STYLE[i], team=(LB_TEAMS.find(t=>t.key===p.group)||{}).label||p.role||'';
+  const first=p.name.split(' ')[0];
+  const init=p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const box=document.getElementById('star-banner'), inner=document.getElementById('sb-inner');
+  inner.style.setProperty('--sb-col', st.col); box.style.setProperty('--sb-col', st.col);
+  inner.innerHTML=`
+    <div class="sb-shine"></div>
+    <div class="sb-rank">#${i+1}<small>RANK</small></div>
+    <div class="sb-photo" data-init="${init}"><img src="${SERVER_URL}/photo/${encodeURIComponent(p.name)}" alt="" onerror="this.parentNode.textContent=this.parentNode.dataset.init"></div>
+    <div class="sb-text">
+      <div class="sb-kicker">${st.kicker}</div>
+      <div class="sb-line">${first} ${st.verb} <b>${fmt(p.revenue)}</b></div>
+      <div class="sb-sub">${p.name} · ${team}</div>
+    </div>
+    <div class="sb-stats">
+      <div class="sb-stat"><div class="sb-val">${p.wins||0}</div><div class="sb-lbl">Wins</div></div>
+      <div class="sb-stat"><div class="sb-val">${p.orders||0}</div><div class="sb-lbl">Orders</div></div>
+    </div>`;
+  box.classList.remove('run'); void box.offsetWidth; box.classList.add('run');
+  if(soundOn && actx){ noise(0,0.9,{vol:0.25,filter:900}); tone(660,0.5,0.6,{vol:0.12}); tone(990,0.65,0.8,{vol:0.1}); }
+  return true;
+}
+function bannerTick(){
+  if(!topPeople.length || celBusy) return;
+  if(bannerIdx>=topPeople.length) bannerIdx=0;
+  if(showStarBanner(bannerIdx)) bannerIdx=(bannerIdx+1)%topPeople.length;
+}
+setTimeout(bannerTick, 15000);
+setInterval(bannerTick, BANNER_EVERY);
+
+/* ── SOUND ENGINE ────────────────────────────────────────────────────────── */
+// All sounds are generated in the browser (no audio files). Louder + longer as the tier rises.
+let actx=null, master=null, soundOn=true;
+try{ soundOn = localStorage.getItem('ww_sound')!=='off'; }catch{}
+
+function enableSound(){
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    actx.resume();
+    if(!master){
+      const comp=actx.createDynamicsCompressor(); comp.threshold.value=-10; comp.ratio.value=6;
+      master=actx.createGain(); master.gain.value=0.9; master.connect(comp); comp.connect(actx.destination);
+    }
+  }catch(e){}
+  document.getElementById('sound-gate').style.display='none';
+  updateSoundBtn();
+  if(soundOn){ chime(0); }
+}
+// If the browser already allows sound (TV launched with the autoplay flag, or Chrome trusts the site),
+// skip the tap screen — important because the page reloads itself every midnight.
+(function autoUnlock(){
+  try{
+    const c=new (window.AudioContext||window.webkitAudioContext)();
+    if(c.state==='running'){ actx=c; enableSound(); } else c.close();
+  }catch(e){}
+})();
+function toggleSound(){
+  soundOn=!soundOn;
+  try{ localStorage.setItem('ww_sound', soundOn?'on':'off'); }catch{}
+  if(!soundOn && window.speechSynthesis) speechSynthesis.cancel();
+  updateSoundBtn();
+}
+function updateSoundBtn(){ const b=document.getElementById('sound-btn'); if(b) b.textContent = soundOn ? '🔊 SOUND ON' : '🔇 SOUND OFF'; }
+document.addEventListener('keydown',e=>{ if(e.key==='m'||e.key==='M') toggleSound(); });
+
+function tone(freq, start, dur, {type='sine', vol=0.4, slideTo=null, attack=0.01}={}){
+  if(!actx) return;
+  const t=actx.currentTime+start, o=actx.createOscillator(), g=actx.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t);
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+attack); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.05);
+}
+function noise(start, dur, {vol=0.4, filter=1200, type='lowpass'}={}){
+  if(!actx) return;
+  const t=actx.currentTime+start, len=Math.floor(actx.sampleRate*dur), buf=actx.createBuffer(1,len,actx.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const src=actx.createBufferSource(), f=actx.createBiquadFilter(), g=actx.createGain();
+  src.buffer=buf; f.type=type; f.frequency.value=filter; g.gain.value=vol;
+  src.connect(f); f.connect(g); g.connect(master); src.start(t);
+}
+function brass(freq, start, dur, vol=0.22){ // trumpet-ish: saw + square, slight attack
+  tone(freq,start,dur,{type:'sawtooth',vol,attack:0.04}); tone(freq*2,start,dur,{type:'square',vol:vol*0.25,attack:0.05});
+}
+function drum(start, vol=0.8){ tone(150,start,0.35,{vol,slideTo:45}); noise(start,0.08,{vol:vol*0.4,filter:3000}); }
+function boom(start){ tone(90,start,1.6,{vol:1,slideTo:28}); noise(start,1.2,{vol:0.8,filter:400}); }
+function airhorn(start, dur=0.9){ [440,554,659].forEach(f=>tone(f,start,dur,{type:'sawtooth',vol:0.16,attack:0.02})); }
+
+function chime(start){ // deal created: bright double ding
+  [[1319,0],[1760,0.16],[2093,0.32]].forEach(([f,o])=>{ tone(f,start+o,1.1,{vol:0.35}); tone(f*2,start+o,0.6,{vol:0.08}); });
+}
+function chaChing(start){ // order: cash register
+  noise(start,0.06,{vol:0.6,filter:6000,type:'highpass'});
+  tone(2637,start+0.08,0.9,{vol:0.3}); tone(3136,start+0.2,1.0,{vol:0.3}); tone(3951,start+0.2,1.0,{vol:0.15});
+}
+function truckHorn(start){ // delivery
+  [0,0.45].forEach(o=>{ tone(220,start+o,0.35,{type:'sawtooth',vol:0.2}); tone(277,start+o,0.35,{type:'sawtooth',vol:0.18}); });
+}
+function fanfare(start, big){ // win / big deals
+  const notes = big ? [[523,0,.18],[523,.2,.18],[523,.4,.18],[698,.6,.9],[880,1.55,.25],[1047,1.85,1.3]]
+                    : [[523,0,.15],[659,.17,.15],[784,.34,.15],[1047,.51,.9]];
+  notes.forEach(([f,o,d])=>brass(f,start+o,d));
+}
+function drumRoll(start, dur){ for(let t=0;t<dur;t+=0.07) drum(start+t, 0.25+0.5*(t/dur)); }
+
+function playEventSound(evt, tier){
+  if(!soundOn || !actx) return;
+  const lvl = {'tier-spark':1,'tier-done':2,'tier-bomb':3,'tier-super':4}[tier.cls]||1;
+  const type = evt.triggerType;
+  let t=0;
+  if(type==='deal'){ chime(0); t=1.2; }
+  else {
+    if(lvl>=3){ drumRoll(0,1.2); t=1.25; }
+    if(lvl>=3) boom(t);
+    if(type==='order')    chaChing(t);
+    if(type==='delivery') truckHorn(t);
+    if(type==='win')      airhorn(t,0.6);
+    if(lvl>=2) fanfare(t+0.5, lvl>=3);
+    if(lvl===4){ airhorn(t+3.3,1.2); drum(t+3.3,1); drum(t+3.6,1); boom(t+3.9); }
+    if(lvl===1) drum(t+0.3,0.6);
+    t += lvl>=3 ? 3.5 : 1.8;
+  }
+  setTimeout(()=>announce(evt, tier), t*1000);
+}
+
+// Voice: "Order confirmed! Geet Rawat. 2.8 lakh. Shree Constructions."
+function spokenAmount(a){
+  if(!a||a==='—') return '';
+  const m=String(a).replace('₹','').match(/([\d.]+)\s*(Cr|L|K)?/i); if(!m) return '';
+  const n=m[1].replace(/\.0$/,''), u=(m[2]||'').toLowerCase();
+  return n+' '+({cr:'crore',l:'lakh',k:'thousand'}[u]||'rupees');
+}
+function announce(evt, tier){
+  if(!soundOn || !window.speechSynthesis) return;
+  const what = {deal:'New deal created', order:'Order confirmed', delivery:'Delivery confirmed', win:'Deal won'}[evt.triggerType]||'Great news';
+  const hype = {'tier-bomb':'Deal bomb! ','tier-super':'Super deal! '}[tier.cls]||'';
+  const parts=[hype+what+'!', evt.person&&evt.person!=='Sales Team'?evt.person:'', spokenAmount(evt.amount), evt.client&&evt.client!==evt.product?evt.client:''].filter(Boolean);
+  const u=new SpeechSynthesisUtterance(parts.join('. '));
+  const v=speechSynthesis.getVoices(); u.voice=v.find(x=>x.lang==='en-IN')||v.find(x=>/en[-_]GB/.test(x.lang))||v.find(x=>x.lang.startsWith('en'))||null;
+  u.rate=0.95; u.pitch=1.05; u.volume=1;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 
 /* ── WEBSOCKET ───────────────────────────────────────────────────────────── */
@@ -492,17 +795,19 @@ const demos={
   '2':{tier:{cls:'tier-done', icon:'🔥',name:'DEAL DONE'}, triggerType:'order',   headline:'ORDER LOCKED!',  subtext:'Advance Received · Order Confirmed', person:'Abhishek Sharma',    product:'Palazzo Engineered Oak', client:'Emaar Hills',      location:'Gurugram',  amount:'₹2.8L'},
   '3':{tier:{cls:'tier-bomb', icon:'💥',name:'DEAL BOMB'}, triggerType:'delivery',headline:'BOMB AWAY! 💥',  subtext:'Material Dispatched',               person:'Vishal Poddar',      product:'Alfresco Castillo',   client:'Prestige Group',     location:'Mumbai',    amount:'₹7.5L'},
   '4':{tier:{cls:'tier-super',icon:'🚀',name:'SUPER DEAL'},triggerType:'order',   headline:'SUPER DEAL! 🚀', subtext:'Advance Received · Order Confirmed', person:'Samarth Khandelwal', product:'Prodigy Chevron Oak', client:'DLF Phase V',        location:'Gurugram',  amount:'₹22L'},
+  'n':{tier:{cls:'tier-done', icon:'🔥',name:'DEAL DONE'}, triggerType:'deal',    headline:'NEW DEAL!',      subtext:'Deal Created in CRM',              person:'Geet Rawat',         product:'Villa flooring — Sector 54', client:'', location:'', amount:'₹3.2L'},
   'w':{tier:{cls:'tier-done', icon:'🏆',name:'DEAL DONE'}, triggerType:'win',     headline:'DEAL WON!',      subtext:'Deal Closed · CRM Updated',         person:'Anurag Khandelwal',  product:'Perscape Pergola',    client:'Studio Orion',       location:'Hyderabad', amount:'₹9L'},
 };
 document.addEventListener('keydown',e=>{
-  if(demos[e.key]){const d=demos[e.key];updateStats(d);addFeed(d);celebrate(d);}
+  if(demos[e.key]){const d=demos[e.key];addFeed(d);celebrate(d);}
+  if(e.key==='b') bannerTick();
   if(e.key==='l'){
-    renderLeaderboard({weekLabel:'20 Oct 2026',updatedBy:'Manish',teams:[
-      {name:'Samarth Khandelwal',role:'South & North',wins:8,revenue:3450000,orders:12},
-      {name:'Abhishek Sharma',   role:'Delhi B2B',    wins:6,revenue:2180000,orders:9},
-      {name:'Vishal Poddar',     role:'West B2B',     wins:4,revenue:1650000,orders:7},
-      {name:'Geet Rawat',        role:'Retail',       wins:11,revenue:1120000,orders:18},
-      {name:'Anurag Khandelwal', role:'Perscape (A&D)',wins:3,revenue:980000,orders:5},
+    renderLeaderboard({weekLabel:'20 Oct 2026',updatedBy:'Ankush',teams:[
+      {name:'Samarth Khandelwal',role:'North & South Mgr',revenue:1450000,wins:4,orders:6},{name:'Mansi',role:'North & South',revenue:820000,wins:3,orders:4},{name:'Abhishek Sharma',role:'North & South',revenue:600000,wins:2,orders:3},
+      {name:'Abhishek Wilson',role:'Delhi B2B Manager',revenue:900000,wins:3,orders:4},{name:'Janak',role:'Delhi B2B',revenue:700000,wins:2,orders:3},
+      {name:'Vishal Poddar',role:'West & Central Mgr',revenue:1100000,wins:3,orders:5},{name:'Kishan',role:'West & Central',revenue:400000,wins:1,orders:2},
+      {name:'Geet Rawat',role:'B2C Manager',revenue:500000,wins:5,orders:8},{name:'Pooja',role:'B2C',revenue:450000,wins:4,orders:6},
+      {name:'Anurag Khandelwal',role:'Perscape Manager',revenue:600000,wins:2,orders:2},{name:'Sampada',role:'Perscape Delhi',revenue:380000,wins:1,orders:2},
     ]});
   }
 });
