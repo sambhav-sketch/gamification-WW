@@ -202,6 +202,7 @@ async function sheetLoadState() {
     if (st.today && st.today.dateKey === todayDateKey()) todayStats = st.today;
     if (Array.isArray(st.activity)) { activityLog = st.activity; pruneActivity(); }
     if (st.watch && +st.watch.lastDealId > 0) { lastDealId = +st.watch.lastDealId; console.log('[WATCH] Resuming after deal #' + lastDealId); }
+    if (st.watch && Array.isArray(st.watch.wonIds) && st.watch.wonIds.length) { st.watch.wonIds.forEach(id => wonSeen.add(String(id))); wonSeeded = true; }
     console.log('[SHEET] State restored from Google Sheet');
     broadcast({ type: 'leaderboard', data: leaderboardData });
     broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
@@ -485,7 +486,9 @@ setInterval(pollBitrix, BITRIX_POLL_INTERVAL);
 // On server start it only records what already exists, so nothing old is replayed.
 const WATCH_INTERVAL = 60 * 1000;
 let lastDealId   = null;          // highest deal ID seen
-const wonSeen    = new Set();     // won deal IDs already celebrated
+const wonSeen    = new Set();     // won deal IDs already celebrated (saved in the Sheet, so a restart doesn't replay them)
+let wonSeeded    = false;         // true once we know which of today's wins were already shown
+const watchState = () => ({ lastDealId, wonIds: [...wonSeen].slice(-300) });
 let watchBusy    = false;
 
 function istDateStr() {
@@ -552,7 +555,7 @@ async function checkDealEvents() {
     const newDeals = created?.result || [];
     if (first) {
       lastDealId = newDeals.length ? Math.max(...newDeals.map(d => +d.ID)) : 0;
-      sheetSaveState('watch', () => ({ lastDealId }));
+      sheetSaveState('watch', watchState);
     } else if (newDeals.length) {
       await loadDealMeta();
       for (const d of newDeals) {
@@ -570,7 +573,7 @@ async function checkDealEvents() {
           amount: amount ? formatAmount(amount) : '—', eventType: 'Deal Created',
         });
       }
-      sheetSaveState('watch', () => ({ lastDealId }));
+      sheetSaveState('watch', watchState);
     }
 
     // WON DEALS (closed today, success stage)
@@ -580,11 +583,15 @@ async function checkDealEvents() {
       'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID'],
       'start': 0,
     });
+    const seedOnly = !wonSeeded;      // first check after a fresh start with nothing saved: just remember today's wins
+    wonSeeded = true;
+    let wonChanged = false;
     for (const d of (won?.result || [])) {
-      if (wonSeen.has(d.ID)) continue;
-      wonSeen.add(d.ID);
-      if (first) continue;
+      if (wonSeen.has(String(d.ID))) continue;
+      wonSeen.add(String(d.ID)); wonChanged = true;
+      if (seedOnly) continue;
       const amount = parseFloat(d.OPPORTUNITY || 0);
+      if (amount < 25000) { console.log(`[WATCH] Deal won #${d.ID} below ₹25K (${amount}) — counted, no celebration`); addToToday({ wins: 1 }); addToMonthly({ wins: 1 }); continue; }
       const person = await personName(d.ASSIGNED_BY_ID);
       const tier   = getTier(amount);
       console.log(`[WATCH] Deal won #${d.ID} ${d.TITLE} ${amount} by ${person}`);
@@ -599,6 +606,7 @@ async function checkDealEvents() {
       broadcast({ type: 'today', data: todayStats });
       broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
     }
+    if (wonChanged) sheetSaveState('watch', watchState);
   } catch (e) {
     console.log('[WATCH] error:', e.message);
   } finally {
