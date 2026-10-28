@@ -683,6 +683,7 @@ function showStarBanner(i){
     </div>`;
   inner.style.animationDuration='11s';
   box.classList.remove('run'); void box.offsetWidth; box.classList.add('run');
+  if(soundOn && actx && actx.state!=='running') actx.resume();
   if(soundOn && actx){ noise(0,0.9,{vol:0.25,filter:900}); tone(660,0.5,0.6,{vol:0.12}); tone(990,0.65,0.8,{vol:0.1}); }
   return true;
 }
@@ -726,7 +727,22 @@ function toggleSound(){
   if(!soundOn && window.speechSynthesis) speechSynthesis.cancel();
   updateSoundBtn();
 }
-function updateSoundBtn(){ const b=document.getElementById('sound-btn'); if(b) b.textContent = soundOn ? '🔊 SOUND ON' : '🔇 SOUND OFF'; }
+function updateSoundBtn(){
+  const b=document.getElementById('sound-btn'); if(!b) return;
+  const blocked = soundOn && (!actx || actx.state!=='running');
+  b.textContent = !soundOn ? '🔇 SOUND OFF (press M)' : blocked ? '🔇 SOUND BLOCKED — TAP SCREEN' : '🔊 SOUND ON';
+  b.style.color = (!soundOn||blocked) ? '#e07a6a' : '';
+  b.style.borderColor = (!soundOn||blocked) ? '#e07a6a' : '';
+}
+// Sound watchdog: the browser can suspend audio (TV/HDMI sleep, audio device change, long idle).
+// Every 20 s try to resume it, and show a red warning on screen if it is still blocked.
+setInterval(()=>{
+  if(soundOn && actx && actx.state!=='running') actx.resume().catch(()=>{});
+  if(window.speechSynthesis && speechSynthesis.paused) speechSynthesis.resume();
+  updateSoundBtn();
+}, 20000);
+// Any tap/click/key on the screen re-enables sound if the browser blocked it
+['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,()=>{ if(soundOn && (!actx || actx.state!=='running')) enableSound(); },{passive:true}));
 document.addEventListener('keydown',e=>{ if(e.key==='m'||e.key==='M') toggleSound(); });
 
 function tone(freq, start, dur, {type='sine', vol=0.4, slideTo=null, attack=0.01}={}){
@@ -771,6 +787,7 @@ function drumRoll(start, dur){ for(let t=0;t<dur;t+=0.07) drum(start+t, 0.25+0.5
 
 function playEventSound(evt, tier){
   if(!soundOn || !actx) return;
+  if(actx.state!=='running') actx.resume();
   const lvl = {'tier-spark':1,'tier-done':2,'tier-bomb':3,'tier-super':4}[tier.cls]||1;
   const type = evt.triggerType;
   let t=0;
