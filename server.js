@@ -43,6 +43,7 @@ const ADMIN_USERS = {
   'surmeet@uniqueflooring.in':  { name:'Surmeet', init:'SU', role:'Assistant',      perms:['order','delivery','win'], lb:true  },
   'accounts2@uniqueflooring.in':{ name:'Ankush',  init:'AN', role:'Accounts & Ops', perms:['order','delivery'],       lb:true  },
   'miraj@uniqueflooring.in':    { name:'Miraj',   init:'MI', role:'Billing',        perms:['order','delivery'],       lb:false },
+  'amit.s@uniqueflooring.in':   { name:'Amit',    init:'AM', role:'Billing (Himalaya)', perms:['order','delivery'],   lb:false },
 };
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
