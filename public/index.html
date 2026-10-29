@@ -493,25 +493,41 @@ function retractEvent(id){
   for(let i=celQueue.length-1;i>=0;i--) if(celQueue[i].id===id) celQueue.splice(i,1);
   renderFeed();
 }
-function addFeed(evt) {
+const FEED_SHOW=12;
+const FEED_KIND={deal:{icon:'🆕',label:'New deal'}, win:{label:'Deal won'}, order:{icon:'📝',label:'Order confirmed'}, delivery:{icon:'🚚',label:'Delivered'}};
+function feedEntry(evt){
   const t=evt.tier||{cls:'tier-done',icon:'🔥',name:'DEAL DONE'};
-  const time=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
-  feedItems.unshift({t,evt,time});
-  if(feedItems.length>6) feedItems.pop();
+  const time=new Date(evt.ts||Date.now()).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+  return {t,evt,time};
+}
+function addFeed(evt) {
+  if(evt.id && feedItems.some(f=>f.evt.id===evt.id)) return;
+  feedItems.unshift(feedEntry(evt));
+  if(feedItems.length>FEED_SHOW) feedItems.length=FEED_SHOW;
+  renderFeed();
+}
+// Server sends today's activity so far (on connect and every Bitrix refresh)
+function loadHistory(items){
+  if(!Array.isArray(items)) return;
+  feedItems=items.slice(0,FEED_SHOW).map(feedEntry);
   renderFeed();
 }
 function renderFeed(){
-  if(!feedItems.length){ document.getElementById('feed').innerHTML=''; return; }
-  document.getElementById('feed').innerHTML=feedItems.map(f=>`
+  if(!feedItems.length){ document.getElementById('feed').innerHTML=`<div class="feed-item" style="opacity:.35"><div class="fi-tier">⚡</div><div class="fi-info"><div class="fi-head">Waiting for today's first event…</div><div class="fi-sub">New deals, wins, orders and deliveries will appear here in real time</div></div></div>`; return; }
+  document.getElementById('feed').innerHTML=feedItems.map(f=>{
+    const k=FEED_KIND[f.evt.triggerType]||{};
+    const who=(LB_ALIAS[f.evt.person]||{}).label||f.evt.person;
+    const prod=f.evt.category||f.evt.product||f.evt.client||'—';
+    return `
     <div class="feed-item">
-      <div class="fi-tier">${f.t.icon}</div>
+      <div class="fi-tier">${k.icon||f.t.icon}</div>
       <div class="fi-info">
-        <div class="fi-head">${f.evt.person} · ${f.evt.product||f.evt.client||'—'}</div>
-        <div class="fi-sub">${[f.evt.client,f.evt.location,f.evt.subtext].filter(Boolean).join(' · ')}</div>
+        <div class="fi-head">${who} · ${prod}</div>
+        <div class="fi-sub">${[k.label,f.evt.client!==prod?f.evt.client:'',f.evt.location].filter(Boolean).join(' · ')}</div>
       </div>
       <div class="fi-amount ${f.t.cls}">${f.evt.amount}</div>
       <div class="fi-time">${f.time}</div>
-    </div>`).join('');
+    </div>`;}).join('');
 }
 
 /* ── CELEBRATION ─────────────────────────────────────────────────────────── */
@@ -841,6 +857,7 @@ function connect(){
     let m; try{m=JSON.parse(data);}catch(e){return;}
     if(m.type==='celebration'){addFeed(m);celebrate(m);}
     if(m.type==='retract')    {retractEvent(m.id);}
+    if(m.type==='history')    {loadHistory(m.items);}
     if(m.type==='ticker')     {renderTicker(m.data);}
     if(m.type==='leaderboard'){renderLeaderboard(m.data);}
     if(m.type==='monthly')    {renderMonthly(m.data, m.countdown);}
