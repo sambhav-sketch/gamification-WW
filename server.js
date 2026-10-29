@@ -418,6 +418,23 @@ async function bitrixListAll(method, params, maxPages = 40) {
 
 const PIPELINE_ACTIVE_DAYS = 90;   // open deals with no update/activity for longer than this are treated as stale
 
+// ── TODAY'S ACTIVITY FEED ─────────────────────────────────────────────────────
+// Merges: manual triggers (orders / deliveries / wins from admin), today's CRM deals
+// (created + won, refreshed every Bitrix poll) and anything broadcast live since start.
+let bitrixFeed = [];
+let liveFeed   = [];
+const FEED_MAX = 40;
+function istMidnightMs() { return Date.parse(istDateStr() + 'T00:00:00+05:30'); }
+function buildFeed() {
+  const since = istMidnightMs(), byId = new Map();
+  const add = (e) => { if (e && e.id && e.ts >= since && !byId.has(e.id)) byId.set(e.id, e); };
+  liveFeed.forEach(add);
+  activityLog.forEach(a => add({ id: a.id, ts: a.ts, triggerType: a.triggerType, person: a.person, product: a.product,
+    client: a.client, location: a.location, amount: a.amount, tier: getTier(a.raw) }));
+  bitrixFeed.forEach(add);
+  return [...byId.values()].sort((a, b) => b.ts - a.ts).slice(0, FEED_MAX);
+}
+
 async function pollBitrix() {
   if (!BITRIX_URL) {
     console.log('[BITRIX] No webhook URL configured — ticker will use demo data');
@@ -430,7 +447,7 @@ async function pollBitrix() {
     // Deals CREATED today (IST), biggest first
     const created = await bitrixListAll('crm.deal.list', {
       'filter[>=DATE_CREATE]': sinceIST,
-      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID'],
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','DATE_CREATE'],
       'order[OPPORTUNITY]': 'DESC',
     });
 
@@ -438,7 +455,7 @@ async function pollBitrix() {
     const won = await bitrixListAll('crm.deal.list', {
       'filter[STAGE_SEMANTIC_ID]': 'S',
       'filter[>=CLOSEDATE]': todayIST,
-      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID'],
+      'select[]': ['ID','TITLE','OPPORTUNITY','ASSIGNED_BY_ID','DATE_MODIFY'],
       'order[OPPORTUNITY]': 'DESC',
     });
 
@@ -471,6 +488,16 @@ async function pollBitrix() {
     };
     console.log(`[BITRIX] Ticker: ${created.length} created, ${won.length} won today · pipeline ${formatAmount(pipelineVal)} from ${active.length} active of ${open.length} open deals`);
     broadcast({ type: 'ticker', data: tickerCache });     // push to the TV straight away
+
+    // Today's CRM events for the activity feed (so a reloaded TV still shows the day so far)
+    const nm = (id) => USER_MAP[id] || userNameCache[String(id)] || 'Sales Team';
+    bitrixFeed = [
+      ...created.map(d => ({ id: 'd' + d.ID, ts: Date.parse(d.DATE_CREATE || '') || Date.now(), triggerType: 'deal',
+        person: nm(d.ASSIGNED_BY_ID), product: d.TITLE || 'New deal', amount: formatAmount(parseFloat(d.OPPORTUNITY || 0)), tier: getTier(parseFloat(d.OPPORTUNITY || 0)) })),
+      ...won.map(d => ({ id: 'w' + d.ID, ts: Date.parse(d.DATE_MODIFY || '') || Date.now(), triggerType: 'win',
+        person: nm(d.ASSIGNED_BY_ID), product: d.TITLE || 'Deal', amount: formatAmount(parseFloat(d.OPPORTUNITY || 0)), tier: getTier(parseFloat(d.OPPORTUNITY || 0)) })),
+    ];
+    broadcast({ type: 'history', items: buildFeed() });
   } catch(e) {
     console.log('[BITRIX] Poll error:', e.message);
   }
@@ -567,7 +594,7 @@ async function checkDealEvents() {
         const category = productCategory(d) || (pipelineNames && pipelineNames[String(d.CATEGORY_ID || 0)]) || '';
         console.log(`[WATCH] New deal #${d.ID} ${d.TITLE} ${amount} [${category}] by ${person}`);
         broadcast({
-          type: 'celebration', triggerType: 'deal', tier: getTier(amount),
+          type: 'celebration', id: 'd' + d.ID, triggerType: 'deal', tier: getTier(amount),
           headline: 'NEW DEAL ALERT', subtext: 'New deal created in CRM',
           person, product: category || d.TITLE || 'New Deal', category, client: d.TITLE || '', location: '',
           amount: amount ? formatAmount(amount) : '—', eventType: 'Deal Created',
@@ -598,7 +625,7 @@ async function checkDealEvents() {
       addToToday({ wins: 1 });
       addToMonthly({ wins: 1 });
       broadcast({
-        type: 'celebration', triggerType: 'win', tier,
+        type: 'celebration', id: 'w' + d.ID, triggerType: 'win', tier,
         headline: tier.tier >= 3 ? 'MASSIVE WIN! 🏆' : 'DEAL WON!', subtext: 'Deal Closed · CRM Updated',
         person, product: d.TITLE || 'Deal', client: d.TITLE || '', location: '',
         amount: formatAmount(amount), eventType: 'Deal Won',
@@ -708,6 +735,7 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'leaderboard', data: leaderboardData }));
   ws.send(JSON.stringify({ type: 'monthly',     data: monthlyData, countdown: getCountdown() }));
   ws.send(JSON.stringify({ type: 'today',       data: todayStats }));
+  ws.send(JSON.stringify({ type: 'history',     items: buildFeed() }));
 
   const heartbeat = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
@@ -718,7 +746,14 @@ wss.on('connection', (ws) => {
 });
 
 function broadcast(payload) {
-  if (payload.type === 'celebration') sheetPost('log', 'activity', payload);
+  if (payload.type === 'celebration') {
+    payload.ts = payload.ts || Date.now();
+    payload.id = payload.id || ('e' + payload.ts.toString(36));
+    liveFeed.unshift({ id: payload.id, ts: payload.ts, triggerType: payload.triggerType, person: payload.person, product: payload.product,
+      client: payload.client, location: payload.location, amount: payload.amount, tier: payload.tier });
+    liveFeed = liveFeed.filter(e => e.ts >= istMidnightMs()).slice(0, FEED_MAX);
+    sheetPost('log', 'activity', payload);
+  }
   const msg = JSON.stringify(payload);
   console.log('[BROADCAST]', msg.substring(0, 200));
   wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(msg); });
@@ -896,6 +931,7 @@ app.post('/activity/delete', requireUser, (req, res) => {
   console.log(`[ACTIVITY] deleted ${a.triggerType} ${a.amount} for ${a.person} (by ${a.by}) — deleted by ${req.user.email}`);
   sheetPost('log', 'activity', { eventType: 'DELETED · ' + ({ order: 'Order Confirmed', delivery: 'Delivery', win: 'Deal Won' }[a.triggerType] || a.triggerType),
     person: a.person, product: a.product, client: a.client, location: a.location, amount: a.amount, by: req.user.name });
+  liveFeed = liveFeed.filter(e => e.id !== a.id);
   broadcast({ type: 'retract', id: a.id });
   broadcast({ type: 'today',   data: todayStats });
   broadcast({ type: 'monthly', data: monthlyData, countdown: getCountdown() });
