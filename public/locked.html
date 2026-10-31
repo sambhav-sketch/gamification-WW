@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wonderwoods Sales Floor · Locked</title>
+<link rel="icon" href="ww-mark-cream.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{--gold:#C9A84C;--forest:#0D1510;--cream:#F5EFE0;--dim:rgba(245,239,224,.5)}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{min-height:100vh;background:var(--forest);color:var(--cream);font-family:'Barlow',sans-serif;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+  .box{max-width:420px}
+  .lock{font-size:3rem;margin-bottom:12px}
+  h1{font-family:'Barlow Condensed',sans-serif;font-weight:800;letter-spacing:4px;text-transform:uppercase;font-size:1.6rem;color:var(--gold)}
+  p{color:var(--dim);font-size:.9rem;line-height:1.6;margin:12px 0 24px}
+  #gbtn{display:flex;justify-content:center;min-height:44px}
+  #msg{margin-top:14px;font-size:.8rem;color:#e07a6a;min-height:1.2em}
+</style>
+</head><body>
+<div class="box">
+  <div class="lock">🔒</div>
+  <h1>Sales floor only</h1>
+  <p>The Wonderwoods sales floor display opens only on approved office internet.<br>Admins can sign in with their company Google account to open it on this device.</p>
+  <div id="gbtn"></div>
+  <div id="msg"></div>
+</div>
+<script>
+async function onSignIn(resp){
+  const msg=document.getElementById('msg'); msg.style.color='var(--dim)'; msg.textContent='Checking access…';
+  try{
+    const r=await fetch('/display/login',{method:'POST',headers:{'Authorization':'Bearer '+resp.credential}});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ msg.style.color='#e07a6a'; msg.textContent=d.error||'Access denied'; return; }
+    location.replace('/');
+  }catch{ msg.style.color='#e07a6a'; msg.textContent='Server unreachable — try again in a moment.'; }
+}
+async function init(){
+  if(!window.google||!google.accounts){ return setTimeout(init,300); }
+  const {clientId}=await fetch('/auth/config').then(r=>r.json());
+  google.accounts.id.initialize({client_id:clientId, callback:onSignIn, hd:'uniqueflooring.in'});
+  google.accounts.id.renderButton(document.getElementById('gbtn'),{theme:'filled_black',size:'large',shape:'pill',text:'signin_with'});
+}
+init();
+</script>
+</body></html>
