@@ -16,6 +16,7 @@ const https    = require('https');
 const fs       = require('fs');
 const path     = require('path');
 const { OAuth2Client } = require('google-auth-library');
+const crypto   = require('crypto');
 
 const app = express();
 app.use(express.json());
@@ -26,6 +27,89 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
+});
+
+// ── DISPLAY LOCK ──────────────────────────────────────────────────────────────
+// The TV page and its live data open only from approved office internet connections
+// (IPs approved from the admin page, plus OFFICE_IPS env), or on a device signed in
+// with an admin Google account (30-day cookie). Admin page + its API use Google sign-in.
+const DISPLAY_COOKIE  = 'ww_display';
+const DISPLAY_DAYS    = 30;
+const LOCK_SECRET     = process.env.SESSION_SECRET || process.env.SHEET_KEY || 'ww-local-dev';
+let   allowedNets     = [];      // [{ ip, label, by, at }] — saved in the Sheet ('access')
+function clientIp(req) {
+  // Prefer headers set by Render's edge (Cloudflare) — a browser can't fake these
+  const h  = req.headers;
+  const xf = String(h['cf-connecting-ip'] || h['true-client-ip'] || h['x-forwarded-for'] || '').split(',')[0].trim();
+  return (xf || req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+}
+// IPv6 home/office addresses rotate inside a /64 — match on the first 4 groups
+function netKey(ip) { return ip.includes(':') ? ip.split(':').slice(0, 4).join(':') + '::/64' : ip; }
+function envNets() { return String(process.env.OFFICE_IPS || '').split(',').map(x => x.trim()).filter(Boolean).map(netKey); }
+function ipAllowed(ip) { const k = netKey(ip); return envNets().includes(k) || allowedNets.some(n => n.ip === k); }
+function lockActive() { return allowedNets.length > 0 || envNets().length > 0; }   // open until the first office network is approved
+function signCookie(email, exp) { return crypto.createHmac('sha256', LOCK_SECRET).update(email + '|' + exp).digest('hex').slice(0, 32); }
+function readCookie(req, name) {
+  const m = String(req.headers.cookie || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function cookieUser(req) {
+  const [email, exp, sig] = readCookie(req, DISPLAY_COOKIE).split('|');
+  if (!email || !exp || !sig || +exp < Date.now() || sig !== signCookie(email, exp)) return null;
+  return ADMIN_USERS[email] ? email : null;
+}
+function displayAllowed(req) { return !lockActive() || ipAllowed(clientIp(req)) || !!cookieUser(req); }
+
+const LOCKED_PATHS = new Set(['/', '/index.html', '/today', '/monthly', '/ticker', '/leaderboard']);
+app.use(async (req, res, next) => {
+  const p = req.path;
+  if (!(LOCKED_PATHS.has(p) || p.startsWith('/photo/'))) return next();
+  if (displayAllowed(req)) return next();
+  // admin page calls /leaderboard with its Google token
+  if (req.headers.authorization && p === '/leaderboard') return requireUser(req, res, next);
+  if (p === '/' || p === '/index.html') return res.status(403).sendFile(path.join(__dirname, 'public', 'locked.html'));
+  return res.status(403).json({ error: 'Sales floor display only' });
+});
+
+// Sign a device in for the display (admin-list Google accounts only)
+app.post('/display/login', requireUser, (req, res) => {
+  const exp = Date.now() + DISPLAY_DAYS * 86400 * 1000;
+  const val = [req.user.email, exp, signCookie(req.user.email, exp)].join('|');
+  res.setHeader('Set-Cookie', `${DISPLAY_COOKIE}=${encodeURIComponent(val)}; Max-Age=${DISPLAY_DAYS * 86400}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+  console.log(`[LOCK] Display signed in on a device by ${req.user.email} from ${clientIp(req)}`);
+  res.json({ ok: true });
+});
+// Shows the caller their own internet address (used when approving an office)
+app.get('/display/ip', (req, res) => res.json({ ip: clientIp(req), net: netKey(clientIp(req)),
+  via: ['cf-connecting-ip','true-client-ip','x-forwarded-for'].filter(k => req.headers[k]) }));
+app.post('/display/logout', (req, res) => {
+  res.setHeader('Set-Cookie', `${DISPLAY_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+  res.json({ ok: true });
+});
+
+// Admin: see / approve / remove office networks (leaderboard-rights users only)
+function requireAccessAdmin(req, res, next) {
+  if (!req.user.lb) return res.status(403).json({ error: 'Only Sambhav, Surmeet or Ankush can change display access' });
+  next();
+}
+const accessView = (req) => ({ locked: lockActive(), yourIp: clientIp(req), yourNet: netKey(clientIp(req)), yourNetAllowed: ipAllowed(clientIp(req)),
+  nets: allowedNets, envNets: envNets() });
+app.get('/access', requireUser, requireAccessAdmin, (req, res) => res.json(accessView(req)));
+app.post('/access/allow-here', requireUser, requireAccessAdmin, (req, res) => {
+  const ip = netKey(clientIp(req));
+  if (!ip) return res.status(400).json({ error: 'Could not read your internet address' });
+  const label = String(req.body.label || '').slice(0, 40) || 'Office';
+  allowedNets = allowedNets.filter(n => n.ip !== ip);
+  allowedNets.push({ ip, label, by: req.user.name, at: Date.now() });
+  sheetSaveState('access', () => allowedNets);
+  console.log(`[LOCK] ${req.user.email} approved network ${ip} (${label})`);
+  res.json(accessView(req));
+});
+app.post('/access/remove', requireUser, requireAccessAdmin, (req, res) => {
+  allowedNets = allowedNets.filter(n => n.ip !== req.body.ip);
+  sheetSaveState('access', () => allowedNets);
+  console.log(`[LOCK] ${req.user.email} removed network ${req.body.ip}`);
+  res.json(accessView(req));
 });
 
 // Serve static files from public/ (admin.html lives here)
@@ -201,6 +285,7 @@ async function sheetLoadState() {
     if (st.monthly && st.monthly.monthKey === currentMonthKey()) monthlyData = st.monthly;
     if (st.today && st.today.dateKey === todayDateKey()) todayStats = st.today;
     if (Array.isArray(st.activity)) { activityLog = st.activity; pruneActivity(); }
+    if (Array.isArray(st.access)) { allowedNets = st.access; console.log('[LOCK] ' + allowedNets.length + ' office network(s) approved'); }
     if (st.watch && +st.watch.lastDealId > 0) { lastDealId = +st.watch.lastDealId; console.log('[WATCH] Resuming after deal #' + lastDealId); }
     if (st.watch && Array.isArray(st.watch.wonIds) && st.watch.wonIds.length) { st.watch.wonIds.forEach(id => wonSeen.add(String(id))); wonSeeded = true; }
     console.log('[SHEET] State restored from Google Sheet');
@@ -765,7 +850,18 @@ setTimeout(sheetLoadState, 500);
 // ── HTTP SERVER with WS upgrade ───────────────────────────────────────────────
 const server = app.listen(PORT, () => console.log(`[HTTP] Listening on port ${PORT}`));
 
-server.on('upgrade', (request, socket, head) => {
+server.on('upgrade', async (request, socket, head) => {
+  let ok = displayAllowed(request);
+  if (!ok) {
+    const t = new URL(request.url, 'http://x').searchParams.get('t');
+    if (t) {
+      try {
+        const p = (await googleClient.verifyIdToken({ idToken: t, audience: GOOGLE_CLIENT_ID })).getPayload();
+        ok = !!(p.email_verified && ADMIN_USERS[String(p.email).toLowerCase()]);
+      } catch (e) { ok = false; }
+    }
+  }
+  if (!ok) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
   wss.handleUpgrade(request, socket, head, ws => {
     wss.emit('connection', ws, request);
   });
