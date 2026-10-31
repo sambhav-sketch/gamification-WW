@@ -186,6 +186,7 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
     <div class="tab active" id="tab-trigger" onclick="switchTab('trigger')">🎯 Trigger</div>
     <div class="tab" id="tab-lb" onclick="switchTab('lb')">🏆 Leaderboard</div>
     <div class="tab" id="tab-hist" onclick="switchTab('hist')">📋 History</div>
+    <div class="tab" id="tab-access" onclick="switchTab('access')">📺 Display</div>
   </div>
 
   <!-- TRIGGER TAB -->
@@ -257,6 +258,20 @@ html,body{ background:var(--forest);color:var(--cream);font-family:'Barlow',sans
   </div>
 
   <!-- HISTORY TAB -->
+  <div id="pane-access" class="body" style="display:none">
+    <div class="section-lbl">Who can open the TV display</div>
+    <div style="font-size:.65rem;color:var(--dim);margin:-4px 0 8px;line-height:1.5">The display link works only on approved office internet connections. Anywhere else it shows a locked screen — admins can still open it by signing in with their company Google account (stays signed in for 30 days on that device).</div>
+    <div class="card" id="acc-status"><div class="empty">Loading…</div></div>
+    <div class="section-lbl">Approve the internet you are on now</div>
+    <div class="card">
+      <div style="font-size:.65rem;color:var(--dim);margin-bottom:8px">Do this from a phone or laptop connected to the <b>office Wi-Fi</b> (not mobile data).</div>
+      <div class="field"><input id="acc-label" placeholder="Name this location, e.g. Kirti Nagar office" style="width:100%"></div>
+      <button class="fire-btn" style="margin-top:8px;background:var(--gold,#C9A84C);color:#111" onclick="allowHere()">✅ Approve this office internet</button>
+    </div>
+    <div class="section-lbl">Approved office networks</div>
+    <div class="card" id="acc-list"><div class="empty">Loading…</div></div>
+  </div>
+
   <div id="pane-hist" class="body" style="display:none">
     <div class="section-lbl">Recent entries (last 3 days)</div>
     <div style="font-size:.65rem;color:var(--dim);margin:-4px 0 8px">Wrong entry? Tap 🗑 — it disappears from the TV and today's / this month's totals are corrected.</div>
@@ -467,6 +482,7 @@ function login(user) {
   // Show tabs only if leaderboard access
   document.getElementById('tabs').style.display = 'flex';
   document.getElementById('tab-lb').style.display = currentUser.lb ? '' : 'none';
+  document.getElementById('tab-access').style.display = currentUser.lb ? '' : 'none';
 
   renderRoleBanner();
   renderQuickRow();
@@ -492,11 +508,46 @@ function signOut() {
 /* ── TABS ────────────────────────────────────────────────────────── */
 function switchTab(tab) {
   currentTab=tab;
-  ['trigger','lb','hist'].forEach(t=>{
+  ['trigger','lb','hist','access'].forEach(t=>{
     document.getElementById('pane-'+t).style.display=t===tab?'block':'none';
     document.getElementById('tab-'+t)?.classList.toggle('active',t===tab);
   });
   if(tab==='hist') loadHistory();
+  if(tab==='access') loadAccess();
+}
+
+/* ── DISPLAY ACCESS ──────────────────────────────────────────────── */
+function renderAccess(d){
+  const st=document.getElementById('acc-status'), li=document.getElementById('acc-list');
+  st.innerHTML = !d.locked
+    ? `<div style="color:#e07a6a;font-weight:600">⚠️ Display is still OPEN to anyone with the link.</div><div style="font-size:.65rem;color:var(--dim);margin-top:4px">It locks automatically as soon as you approve the first office network below.</div>`
+    : `<div style="color:#7fc89a;font-weight:600">🔒 Display is locked to approved office networks.</div>`;
+  st.innerHTML += `<div style="font-size:.65rem;color:var(--dim);margin-top:8px">Your internet right now: <b>${d.yourNet}</b> — ${d.yourNetAllowed?'✅ approved':'not approved'}</div>`;
+  const rows=[...d.nets.map(n=>({...n,env:false})), ...d.envNets.map(ip=>({ip,label:'Set on server',env:true}))];
+  li.innerHTML = rows.length ? rows.map(n=>`
+    <div class="hist-item">
+      <div class="hinfo"><div class="hname">${n.label}</div><div class="hsub">${n.ip}${n.by?' · approved by '+n.by+' · '+new Date(n.at).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}</div></div>
+      ${n.env?'':`<button onclick="removeNet('${n.ip}')" style="background:none;border:1px solid rgba(224,122,106,.5);color:#e07a6a;border-radius:8px;padding:4px 8px;cursor:pointer">Remove</button>`}
+    </div>`).join('') : '<div class="empty">None yet</div>';
+}
+async function accessCall(url, body){
+  try{
+    const r=await fetch(RELAY_URL+url, body?{method:'POST',headers:authHeaders(),body:JSON.stringify(body)}:{headers:authHeaders()});
+    if(handleAuthError(r)) return null;
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){ showToast(d.error||'Failed','err'); return null; }
+    return d;
+  }catch{ showToast('Server unreachable','err'); return null; }
+}
+async function loadAccess(){ const d=await accessCall('/access'); if(d) renderAccess(d); }
+async function allowHere(){
+  const label=document.getElementById('acc-label').value.trim()||'Office';
+  if(!confirm(`Approve the internet connection you are on now as "${label}"?\n\nAnyone on this network will be able to open the TV display.`)) return;
+  const d=await accessCall('/access/allow-here',{label}); if(d){ renderAccess(d); showToast('✅ Network approved — display is locked to approved offices','ok'); }
+}
+async function removeNet(ip){
+  if(!confirm('Remove this network? TVs on it will show the locked screen.')) return;
+  const d=await accessCall('/access/remove',{ip}); if(d){ renderAccess(d); showToast('Network removed','ok'); }
 }
 
 /* ── ROLE BANNER ─────────────────────────────────────────────────── */
@@ -639,7 +690,7 @@ function renderLbEditor() {
 
 async function loadCurrentLb() {
   try {
-    const d=await fetch(RELAY_URL+'/leaderboard').then(r=>r.json());
+    const d=await fetch(RELAY_URL+'/leaderboard',{headers:authHeaders()}).then(r=>r.json());
     if (d?.updatedAt) document.getElementById('lb-last-update').textContent='Last change: '+new Date(d.updatedAt).toLocaleString('en-IN',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' by '+(d.updatedBy||'—')+' · '+(d.weeksCount||0)+' week(s) this month';
     if (d?.teams?.length) {
       const lb=lbBuild(d);
@@ -789,7 +840,7 @@ function showToast(msg,cls='ok') {
 let ws;
 function connectWS() {
   if(RELAY_URL.includes('YOUR-APP')) return;
-  try{ ws=new WebSocket(RELAY_URL.replace('https','wss').replace('http','ws')); }catch{ setTimeout(connectWS,5000);return; }
+  try{ ws=new WebSocket(RELAY_URL.replace('https','wss').replace('http','ws')+'/?t='+encodeURIComponent(idToken||'')); }catch{ setTimeout(connectWS,5000);return; }
   ws.onopen =()=>{ document.getElementById('dot').className='dot live'; document.getElementById('clbl').textContent='LIVE'; };
   ws.onclose=()=>{ document.getElementById('dot').className='dot err';  document.getElementById('clbl').textContent='OFFLINE'; setTimeout(connectWS,5000); };
   ws.onerror=()=>ws.close();
